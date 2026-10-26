@@ -22,7 +22,7 @@ struct DeviceDetail: View {
 
     @Environment(\.displayScale) private var displayScale
     /// Puts the tabs in the vertical middle of the toolbar row.
-    private static let tabsTopInset: CGFloat = 7
+    private static let tabsTopInset: CGFloat = 11
 
     @State private var overviewScroll = ScrollPosition()
 
@@ -64,7 +64,12 @@ struct DeviceDetail: View {
         // toolbar, so the page moves them with the sidebar in one animation.
         .overlay(alignment: .top) {
             if device.isPaired {
+                // The large control size, so it matches the sidebar pill.
+                // The glass hugs the control (1 pt), so its own track and
+                // the glass read as one capsule, not one inside another.
                 PagePicker(selection: selection)
+                    .controlSize(.large)
+                    .focusEffectDisabled()
                     .padding(.horizontal, 3)
                     .padding(.vertical, 1)
                     .glassEffect(.regular, in: .capsule)
