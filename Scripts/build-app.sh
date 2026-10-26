@@ -16,7 +16,9 @@ cp "$bin" "$app/Contents/MacOS/KDEConnectNative"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 # Compile the Icon Composer document into Assets.car and AppIcon.icns.
 partial="$(mktemp -t kdeconnect-icon)"
-xcrun actool Resources/AppIcon.icon --compile "$app/Contents/Resources" \
+# actool resolves relative paths in a helper process with another working
+# directory, so pass absolute ones. Its plist goes to stdout; errors show.
+xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$app/Contents/Resources" \
     --platform macosx --minimum-deployment-target 27.0 --app-icon AppIcon \
     --output-partial-info-plist "$partial" >/dev/null
 rm -f "$partial"
