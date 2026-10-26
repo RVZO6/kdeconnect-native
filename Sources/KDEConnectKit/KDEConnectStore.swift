@@ -352,7 +352,7 @@ public final class KDEConnectStore {
 
     /// Debug aid: fills the store with a sample connected phone, without a
     /// daemon, so that the UI can be checked. Do not call `start()` as well.
-    public func showDemo() {
+    public func showDemo(notificationCount: Int? = nil, appCount: Int = 20) {
         isDemo = true
         status = .connected
         announcedName = "This Mac"
@@ -378,6 +378,16 @@ public final class KDEConnectStore {
                 "appName": .string("Mail"), "title": .string("Message \(n)"),
                 "text": .string("A sample notification, so that the page can scroll."), "dismissable": .bool(true),
             ])
+        }
+        if let notificationCount {
+            phone.notifications = (0..<max(0, notificationCount)).map { index in
+                PhoneNotification(id: String(notificationCount - index), properties: [
+                    "appName": .string("Sample App \(index % max(1, appCount) + 1)"),
+                    "title": .string("Message \(notificationCount - index)"),
+                    "text": .string("A sample notification for scrolling and stack tests. Some text wraps onto another line."),
+                    "dismissable": .bool(true), "replyId": .string("reply-\(index)"),
+                ])
+            }
         }
         let laptop = Device(id: "demo_laptop", properties: [
             "name": .string("Sample Laptop"), "type": .string("laptop"), "isPaired": .bool(true),

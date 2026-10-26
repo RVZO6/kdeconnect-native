@@ -57,7 +57,7 @@ and restarts the daemon when it is missing or on a dead bus.
 ```sh
 Scripts/build-app.sh            # builds "build/KDE Connect Native.app"
 Scripts/build-app.sh --install  # also copies it to ~/Applications and opens it
-swift test                      # D-Bus marshalling tests
+swift test                      # unit and regression tests
 ```
 
 Then remove the stock "KDE Connect" from **System Settings → General → Login
@@ -88,3 +88,5 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 - Post a synthetic two-finger swipe each way over the first notification and save captures: `--demo --swipe-test /tmp/swipe`
 - Expand and collapse the notification stacks and save frames during the animation: `--demo --stack-test /tmp/stack`
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`
+- Run the scrolling workload without a daemon: add `--demo --demo-notifications 300 --demo-apps 20 --ui-benchmark /tmp/ui.json`
+- See [performance measurements and test commands](Benchmarks/README.md).

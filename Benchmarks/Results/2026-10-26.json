@@ -1,0 +1,407 @@
+{
+  "date": "2026-10-26",
+  "hardware": "Apple M4 Pro",
+  "os": "macOS 27.0.1",
+  "swift": "6.4",
+  "build": "release",
+  "baselineSource": "2333259 plus the same demo and measurement harness",
+  "notes": [
+    "UI: 300 notifications across 20 apps, 900 x 640 point content area, 241 delivered scroll events per scenario.",
+    "UI: direct NSScrollView delivery makes the hit target independent of focus. Event-monitor routing is covered separately by tests.",
+    "UI: input interval includes the configured 8 ms sleep and scheduling delay; it is not presented frame time.",
+    "UI: CPU time includes all threads in this process, not WindowServer or GPU time.",
+    "Read latency: 64 independent reads, 7 samples per concurrency limit.",
+    "Private bus: NameHasOwner calls on a separate bundled dbus-daemon; no live kdeconnectd or personal device data.",
+    "Single-app exploratory runs: one expanded 300-card group remains expensive; timings varied from approximately 6.3 to 11.0 seconds CPU in both versions. No improvement is claimed for this case."
+  ],
+  "ui": {
+    "baselineRuns": [
+      [
+        {
+          "cpuMilliseconds": 6460.954,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 94.848959,
+          "inputIntervalP50Milliseconds": 26.46175,
+          "inputIntervalP95Milliseconds": 32.523917,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 6545.8528750000005
+        },
+        {
+          "cpuMilliseconds": 6419.552,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 20574,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 42.429708,
+          "inputIntervalP50Milliseconds": 25.923792,
+          "inputIntervalP95Milliseconds": 33.672541,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 6502.632167
+        }
+      ],
+      [
+        {
+          "cpuMilliseconds": 8350.707999999999,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 62.783542,
+          "inputIntervalP50Milliseconds": 32.330125,
+          "inputIntervalP95Milliseconds": 51.668125,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 8425.900166
+        },
+        {
+          "cpuMilliseconds": 9497.985000000002,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 20574,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 75.831334,
+          "inputIntervalP50Milliseconds": 32.611208,
+          "inputIntervalP95Milliseconds": 65.850083,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 9595.072375
+        }
+      ],
+      [
+        {
+          "cpuMilliseconds": 6330.593999999999,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 86.40375,
+          "inputIntervalP50Milliseconds": 25.925208,
+          "inputIntervalP95Milliseconds": 31.645333,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 6416.088125
+        },
+        {
+          "cpuMilliseconds": 6320.83,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 20574,
+          "eventMonitorCount": 320,
+          "inputIntervalMaxMilliseconds": 37.298125,
+          "inputIntervalP50Milliseconds": 26.134083,
+          "inputIntervalP95Milliseconds": 32.370417,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 320,
+          "wallMilliseconds": 6400.643875
+        }
+      ]
+    ],
+    "optimizedRuns": [
+      [
+        {
+          "cpuMilliseconds": 1014.104,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 18.131,
+          "inputIntervalP50Milliseconds": 9.1085,
+          "inputIntervalP95Milliseconds": 12.925625,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 6,
+          "wallMilliseconds": 2364.414666
+        },
+        {
+          "cpuMilliseconds": 772.6839999999997,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 6181,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 56.831458,
+          "inputIntervalP50Milliseconds": 9.09825,
+          "inputIntervalP95Milliseconds": 10.688334,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 30,
+          "wallMilliseconds": 2339.542
+        }
+      ],
+      [
+        {
+          "cpuMilliseconds": 1704.1450000000002,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 24.443541,
+          "inputIntervalP50Milliseconds": 9.462333,
+          "inputIntervalP95Milliseconds": 15.8825,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 6,
+          "wallMilliseconds": 2715.107708
+        },
+        {
+          "cpuMilliseconds": 1918.96,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 5061,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 32.074875,
+          "inputIntervalP50Milliseconds": 11.267834,
+          "inputIntervalP95Milliseconds": 18.393125,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3346,
+          "scrollViewAttached": true,
+          "swipeViewCount": 45,
+          "wallMilliseconds": 2961.452208
+        }
+      ],
+      [
+        {
+          "cpuMilliseconds": 1879.497,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 2374,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 30.773625,
+          "inputIntervalP50Milliseconds": 10.428375,
+          "inputIntervalP95Milliseconds": 17.84225,
+          "notificationCount": 300,
+          "scenario": "collapsed-scroll",
+          "scrollDistancePoints": 3318,
+          "scrollViewAttached": true,
+          "swipeViewCount": 6,
+          "wallMilliseconds": 2872.248958
+        },
+        {
+          "cpuMilliseconds": 1315.6800000000003,
+          "deliveredScrollEvents": 241,
+          "documentHeightPoints": 4934,
+          "eventMonitorCount": 1,
+          "inputIntervalMaxMilliseconds": 22.838958,
+          "inputIntervalP50Milliseconds": 9.141542,
+          "inputIntervalP95Milliseconds": 13.863708,
+          "notificationCount": 300,
+          "scenario": "expanded-scroll",
+          "scrollDistancePoints": 3360,
+          "scrollViewAttached": true,
+          "swipeViewCount": 30,
+          "wallMilliseconds": 2425.979334
+        }
+      ]
+    ],
+    "singleAppExploratoryRuns": {
+      "baseline": [
+        [
+          {
+            "cpuMilliseconds": 127.9559999999999,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 548,
+            "eventMonitorCount": 301,
+            "inputIntervalMaxMilliseconds": 10.821916,
+            "inputIntervalP50Milliseconds": 9.195875,
+            "inputIntervalP95Milliseconds": 9.300291,
+            "notificationCount": 300,
+            "scenario": "collapsed-scroll",
+            "scrollDistancePoints": 0,
+            "scrollViewAttached": true,
+            "swipeViewCount": 301,
+            "wallMilliseconds": 2216.152833
+          },
+          {
+            "cpuMilliseconds": 6658.171,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 19852,
+            "eventMonitorCount": 301,
+            "inputIntervalMaxMilliseconds": 55.849042,
+            "inputIntervalP50Milliseconds": 26.84275,
+            "inputIntervalP95Milliseconds": 35.009291,
+            "notificationCount": 300,
+            "scenario": "expanded-scroll",
+            "scrollDistancePoints": 3360,
+            "scrollViewAttached": true,
+            "swipeViewCount": 301,
+            "wallMilliseconds": 6718.6115
+          }
+        ],
+        [
+          {
+            "cpuMilliseconds": 105.42699999999991,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 548,
+            "eventMonitorCount": 301,
+            "inputIntervalMaxMilliseconds": 13.883833,
+            "inputIntervalP50Milliseconds": 9.148416,
+            "inputIntervalP95Milliseconds": 9.291166,
+            "notificationCount": 300,
+            "scenario": "collapsed-scroll",
+            "scrollDistancePoints": 0,
+            "scrollViewAttached": true,
+            "swipeViewCount": 301,
+            "wallMilliseconds": 2224.855083
+          },
+          {
+            "cpuMilliseconds": 10763.048999999999,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 19852,
+            "eventMonitorCount": 301,
+            "inputIntervalMaxMilliseconds": 90.275375,
+            "inputIntervalP50Milliseconds": 47.129959,
+            "inputIntervalP95Milliseconds": 63.544,
+            "notificationCount": 300,
+            "scenario": "expanded-scroll",
+            "scrollDistancePoints": 3360,
+            "scrollViewAttached": true,
+            "swipeViewCount": 301,
+            "wallMilliseconds": 10925.901209
+          }
+        ]
+      ],
+      "optimized": [
+        [
+          {
+            "cpuMilliseconds": 111.61599999999999,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 548,
+            "eventMonitorCount": 1,
+            "inputIntervalMaxMilliseconds": 11.279209,
+            "inputIntervalP50Milliseconds": 9.206417,
+            "inputIntervalP95Milliseconds": 9.349792,
+            "notificationCount": 300,
+            "scenario": "collapsed-scroll",
+            "scrollDistancePoints": 0,
+            "scrollViewAttached": true,
+            "swipeViewCount": 1,
+            "wallMilliseconds": 2233.088417
+          },
+          {
+            "cpuMilliseconds": 10959.098999999998,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 19852,
+            "eventMonitorCount": 1,
+            "inputIntervalMaxMilliseconds": 112.885041,
+            "inputIntervalP50Milliseconds": 38.509208,
+            "inputIntervalP95Milliseconds": 86.153958,
+            "notificationCount": 300,
+            "scenario": "expanded-scroll",
+            "scrollDistancePoints": 3360,
+            "scrollViewAttached": true,
+            "swipeViewCount": 300,
+            "wallMilliseconds": 11043.506625
+          }
+        ],
+        [
+          {
+            "cpuMilliseconds": 122.25700000000006,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 548,
+            "eventMonitorCount": 1,
+            "inputIntervalMaxMilliseconds": 36.89575,
+            "inputIntervalP50Milliseconds": 9.120125,
+            "inputIntervalP95Milliseconds": 9.244625,
+            "notificationCount": 300,
+            "scenario": "collapsed-scroll",
+            "scrollDistancePoints": 0,
+            "scrollViewAttached": true,
+            "swipeViewCount": 1,
+            "wallMilliseconds": 2239.458042
+          },
+          {
+            "cpuMilliseconds": 6324.711,
+            "deliveredScrollEvents": 241,
+            "documentHeightPoints": 19852,
+            "eventMonitorCount": 1,
+            "inputIntervalMaxMilliseconds": 71.867416,
+            "inputIntervalP50Milliseconds": 25.297417,
+            "inputIntervalP95Milliseconds": 33.386375,
+            "notificationCount": 300,
+            "scenario": "expanded-scroll",
+            "scrollDistancePoints": 3360,
+            "scrollViewAttached": true,
+            "swipeViewCount": 300,
+            "wallMilliseconds": 6362.075
+          }
+        ]
+      ]
+    }
+  },
+  "reads": [
+    {
+      "workload": "read-latency",
+      "limit": 1,
+      "samplesMilliseconds": [
+        187.846042,
+        188.955291,
+        186.171625,
+        185.076625,
+        186.942459,
+        188.375917,
+        183.968208
+      ],
+      "medianMilliseconds": 186.942459
+    },
+    {
+      "workload": "read-latency",
+      "limit": 8,
+      "samplesMilliseconds": [
+        23.300209,
+        22.81825,
+        23.557917,
+        24.114375,
+        24.042709,
+        24.269375,
+        24.917083
+      ],
+      "medianMilliseconds": 24.042709
+    },
+    {
+      "workload": "private-bus",
+      "limit": 1,
+      "samplesMilliseconds": [
+        2.562958,
+        2.217959,
+        2.117416,
+        2.027083,
+        2.078209,
+        2.134375,
+        2.026584
+      ],
+      "medianMilliseconds": 2.117416
+    },
+    {
+      "workload": "private-bus",
+      "limit": 8,
+      "samplesMilliseconds": [
+        0.637125,
+        0.617917,
+        0.540209,
+        0.544167,
+        0.657208,
+        1.122334,
+        0.532708
+      ],
+      "medianMilliseconds": 0.617917
+    }
+  ]
+}

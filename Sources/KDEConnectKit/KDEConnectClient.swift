@@ -114,14 +114,15 @@ public struct KDEConnectClient: Sendable {
         let base = Self.pluginPath(id, "notifications")
         let ids = try await call(base, "org.kde.kdeconnect.device.notifications", "activeNotifications")
             .first?.stringArrayValue ?? []
-        var result: [PhoneNotification] = []
-        for nid in ids {
+        // These property reads are independent. Keep a small number in
+        // flight instead of paying one full round trip per notification.
+        let result = await concurrentRead(ids, limit: 8) { nid -> PhoneNotification? in
             guard let p = try? await properties("\(base)/\(nid)", "org.kde.kdeconnect.device.notifications.notification")
-            else { continue }
-            result.append(PhoneNotification(id: nid, properties: p))
+            else { return nil }
+            return PhoneNotification(id: nid, properties: p)
         }
         // Higher public IDs are newer.
-        return result.sorted { (Int($0.id) ?? 0) > (Int($1.id) ?? 0) }
+        return result.compactMap { $0 }.sorted { (Int($0.id) ?? 0) > (Int($1.id) ?? 0) }
     }
 
     /// Enabled state of each plugin that the device supports.

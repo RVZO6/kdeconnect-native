@@ -129,10 +129,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
         let args = CommandLine.arguments
+        if args.contains("--ui-benchmark"), !args.contains("--demo") {
+            print("--ui-benchmark requires --demo; no live device data is used")
+            NSApp.terminate(nil)
+            return
+        }
         if args.contains("--demo") {
-            store.showDemo()
+            func count(after flag: String) -> Int? {
+                guard let index = args.firstIndex(of: flag), index + 1 < args.count,
+                      let value = Int(args[index + 1]) else { return nil }
+                return max(0, min(value, 5_000))
+            }
+            store.showDemo(notificationCount: count(after: "--demo-notifications"),
+                           appCount: count(after: "--demo-apps") ?? 20)
         } else {
             store.start()
+        }
+        if let index = args.firstIndex(of: "--ui-benchmark"), index + 1 < args.count {
+            await UIBenchmark.run(to: args[index + 1])
+            return
         }
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
             await Snapshot.write(store: store, to: args[index + 1])
@@ -331,9 +346,24 @@ enum SidebarTest {
             try? task.run()
             task.waitUntilExit()
         }
-        // The first card is about 300 pt below the top of the window, centred.
-        let frame = window.frame
-        let point = CGPoint(x: frame.midX + 120, y: (NSScreen.screens.first?.frame.height ?? 0) - frame.maxY + 310)
+        // Use the actual hit region. A fixed offset can land just below
+        // the first card when the window size or text layout changes.
+        func catchers(in view: NSView) -> [HorizontalSwipeCatcher.CatcherView] {
+            let own = (view as? HorizontalSwipeCatcher.CatcherView).map { [$0] } ?? []
+            return own + view.subviews.flatMap { catchers(in: $0) }
+        }
+        func targets() -> [HorizontalSwipeCatcher.CatcherView] {
+            guard let content = window.contentView else { return [] }
+            return catchers(in: content).filter {
+                $0.active && !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.intersection($0.bounds).isEmpty
+            }
+        }
+        guard let first = targets().max(by: {
+            $0.convert($0.bounds, to: nil).maxY < $1.convert($1.bounds, to: nil).maxY
+        }) else { print("no swipe target"); NSApp.terminate(nil); return }
+        let location = window.convertPoint(toScreen: first.convert(NSPoint(x: first.bounds.midX, y: first.bounds.midY), to: nil))
+        let point = CGPoint(x: location.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - location.y)
+        let targetsBefore = targets().count
         func post(dx: CGFloat, phase: Int64) {
             guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                                    wheel1: 0, wheel2: Int32(dx), wheel3: 0) else { return }
@@ -379,6 +409,7 @@ enum SidebarTest {
         shoot("swipe-right-after.png")
         print("cards after: \(store.selectedDevice?.notifications.count ?? 0) (demo keeps the data; the view hides dismissed cards)")
         print("cards before: \(before)")
+        print("visible swipe targets: \(targetsBefore) -> \(targets().count)")
         NSApp.terminate(nil)
     }
 
