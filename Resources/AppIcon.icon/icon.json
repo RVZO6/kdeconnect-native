@@ -1,28 +1,44 @@
 {
   "fill": {
-    "automatic-gradient": "srgb:0.11373,0.60000,0.95294,1.00000"
+    "linear-gradient": [
+      "srgb:0.34902,0.78039,1.00000,1.00000",
+      "srgb:0.07059,0.40000,0.85882,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0.0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1.0
+      }
+    }
   },
   "groups": [
     {
       "layers": [
         {
-          "glass": true,
-          "image-name": "glyph.svg",
-          "name": "glyph"
+          "name": "chat",
+          "image-name": "chat.svg",
+          "glass": true
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.3
+        "opacity": 0.15
       },
       "translucency": {
         "enabled": false,
-        "value": 0
+        "value": 0.0
       }
     },
     {
       "layers": [
         {
+          "name": "screen",
+          "image-name": "screen.svg",
+          "glass": false,
           "fill-specializations": [
             {
               "value": "automatic"
@@ -33,15 +49,12 @@
                 "solid": "srgb:0.17647,0.18824,0.20000,1.00000"
               }
             }
-          ],
-          "glass": false,
-          "image-name": "screen.svg",
-          "name": "screen"
+          ]
         },
         {
-          "glass": true,
+          "name": "body",
           "image-name": "body.svg",
-          "name": "body"
+          "glass": true
         }
       ],
       "shadow": {
@@ -50,7 +63,24 @@
       },
       "translucency": {
         "enabled": false,
-        "value": 0
+        "value": 0.0
+      }
+    },
+    {
+      "layers": [
+        {
+          "name": "arcs",
+          "image-name": "arcs.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.25
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
       }
     }
   ],
