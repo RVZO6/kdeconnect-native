@@ -58,33 +58,17 @@ private struct Sidebar: View {
     @State private var unpairCandidate: Device?
 
     var body: some View {
+        let groups = deviceGroups
         List(selection: $selection) {
-            if !store.pairingRequests.isEmpty {
-                Section("Pairing Requests") {
-                    ForEach(store.pairingRequests) { row($0) }
+            ForEach(groups, id: \.title) { group in
+                Section(group.title) {
+                    ForEach(group.devices) { row($0) }
+                    // Like the "+" after the last tab: it sits right under
+                    // the last device, not in a section of its own.
+                    if group.title == groups.last?.title { AddDeviceRow() }
                 }
             }
-            let connected = store.pairedDevices.filter(\.isReachable)
-            if !connected.isEmpty {
-                Section("Connected") {
-                    ForEach(connected) { row($0) }
-                }
-            }
-            let remembered = store.pairedDevices.filter { !$0.isReachable }
-            if !remembered.isEmpty {
-                Section("Remembered") {
-                    ForEach(remembered) { row($0) }
-                }
-            }
-            if !store.availableDevices.isEmpty {
-                Section("Available") {
-                    ForEach(store.availableDevices) { row($0) }
-                }
-            }
-            // Like the "+" after the last tab: a new device goes at the end.
-            Section {
-                AddDeviceRow()
-            }
+            if groups.isEmpty { AddDeviceRow() }
         }
         .listStyle(.sidebar)
         .confirmationDialog("Unpair \(unpairCandidate?.name ?? "")?", isPresented: unpairShown, presenting: unpairCandidate) { device in
@@ -96,6 +80,17 @@ private struct Sidebar: View {
         .safeAreaBar(edge: .bottom) {
             ThisMacBar()
         }
+    }
+
+    /// The non-empty device sections, in display order.
+    private var deviceGroups: [(title: String, devices: [Device])] {
+        [
+            ("Pairing Requests", store.pairingRequests),
+            ("Connected", store.pairedDevices.filter(\.isReachable)),
+            ("Remembered", store.pairedDevices.filter { !$0.isReachable }),
+            ("Available", store.availableDevices),
+        ]
+        .filter { !$0.devices.isEmpty }
     }
 
     private func row(_ device: Device) -> some View {
@@ -122,6 +117,7 @@ private struct Sidebar: View {
 /// The last row of the device list. It starts pairing a new device.
 private struct AddDeviceRow: View {
     @Environment(KDEConnectStore.self) private var store
+    @State private var hovering = false
 
     var body: some View {
         Button {
@@ -132,11 +128,29 @@ private struct AddDeviceRow: View {
             } icon: {
                 Image(systemName: "plus").imageScale(.small)
             }
-            .foregroundStyle(.secondary)
+            // Grey, like the text; the full label colour on hover. The icon
+            // gets the style itself, because the sidebar tints list icons.
+            .labelStyle(TintedIconLabelStyle(style: hovering ? .primary : .secondary))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
         .disabled(store.status != .connected)
         .help("Pair a new device")
+    }
+}
+
+/// A label whose icon uses the same style as its title.
+private struct TintedIconLabelStyle: LabelStyle {
+    let style: HierarchicalShapeStyle
+
+    func makeBody(configuration: Configuration) -> some View {
+        Label {
+            configuration.title.foregroundStyle(style)
+        } icon: {
+            configuration.icon.foregroundStyle(style)
+        }
     }
 }
 
