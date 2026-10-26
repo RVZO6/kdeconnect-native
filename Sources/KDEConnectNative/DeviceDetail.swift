@@ -9,6 +9,7 @@ struct DeviceDetail: View {
     @State private var pluginStates: [String: Bool] = [:]
     @State private var confirmUnpair = false
     @State private var dropTargeted = false
+    @State private var settingsPlugin: PluginSheetItem?
 
     var body: some View {
         Form {
@@ -46,6 +47,9 @@ struct DeviceDetail: View {
             Button("Unpair", role: .destructive) { store.perform("Unpair") { try await $0.unpair(id) } }
         } message: {
             Text("You must pair again before the devices can connect.")
+        }
+        .sheet(item: $settingsPlugin) { item in
+            PluginSettingsSheet(device: device, plugin: item.id)
         }
         .task(id: PluginKey(device: device)) {
             pluginStates = await store.pluginStates(for: device) ?? [:]
@@ -165,7 +169,22 @@ struct DeviceDetail: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(sortedPlugins, id: \.self) { plugin in
-                    Toggle(Plugin.displayName(for: plugin), isOn: pluginBinding(plugin))
+                    LabeledContent(Plugin.displayName(for: plugin)) {
+                        HStack(spacing: 10) {
+                            // Every row keeps the gear's space, so that the
+                            // switches stay in one column.
+                            Button("Settings", systemImage: "gearshape") { settingsPlugin = PluginSheetItem(id: plugin) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                                .help("\(Plugin.displayName(for: plugin)) settings")
+                                .opacity(PluginConfig.configurablePlugins.contains(plugin) ? 1 : 0)
+                                .disabled(!PluginConfig.configurablePlugins.contains(plugin))
+                                .accessibilityHidden(!PluginConfig.configurablePlugins.contains(plugin))
+                            Toggle(Plugin.displayName(for: plugin), isOn: pluginBinding(plugin))
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+                    }
                 }
             }
         }
@@ -219,6 +238,10 @@ struct DeviceDetail: View {
         default: return "battery.100percent"
         }
     }
+}
+
+private struct PluginSheetItem: Identifiable {
+    let id: String
 }
 
 /// Reloads plugin states when the device or its plugin list changes.

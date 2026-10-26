@@ -13,38 +13,46 @@ struct MainWindow: View {
             Sidebar(selection: $store.selectedDeviceId)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
         } detail: {
-            if store.status != .connected {
-                ServiceUnavailableView()
-            } else if let device = store.selectedDevice {
-                // A new identity per device, so that view state such as a
-                // reply draft never moves to another device.
-                DeviceDetail(device: device)
-                    .id(device.id)
-            } else {
-                NoDeviceSelectedView()
-            }
+            detail
+                // The default opaque title bar band over the detail column
+                // does not line up with the column edge. Let the content
+                // show under the toolbar, as in the system apps.
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
         .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Pair Device…", systemImage: "plus") { store.isPairingSheetShown = true }
+                    .help("Pair a new device")
+                    .disabled(store.status != .connected)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Refresh", systemImage: "arrow.clockwise") { store.refreshNetwork() }
                     .help("Search for devices on all networks again")
                     .disabled(store.status != .connected)
             }
         }
+        .sheet(isPresented: $store.isPairingSheetShown) {
+            PairingSheet()
+        }
         .alert("KDE Connect", isPresented: errorShown) {
             Button("OK") { store.clearError() }
         } message: {
             Text(store.lastError ?? "")
         }
-        .onAppear {
-            WindowOpener.shared.isMainWindowVisible = true
-            NSApp.setActivationPolicy(.regular)
-        }
-        .onDisappear {
-            // Without a window, the app lives only in the menu bar again.
-            WindowOpener.shared.isMainWindowVisible = false
-            NSApp.setActivationPolicy(.accessory)
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        if store.status != .connected {
+            ServiceUnavailableView()
+        } else if let device = store.selectedDevice {
+            // A new identity per device, so that view state such as a
+            // reply draft never moves to another device.
+            DeviceDetail(device: device)
+                .id(device.id)
+        } else {
+            NoDeviceSelectedView()
         }
     }
 
@@ -85,8 +93,13 @@ private struct Sidebar: View {
         .listStyle(.sidebar)
         .overlay {
             if store.status == .connected && store.devices.isEmpty {
-                ContentUnavailableView("No Devices", systemImage: "iphone.slash",
-                                       description: Text("Open KDE Connect on your other devices."))
+                ContentUnavailableView {
+                    Label("No Devices", systemImage: "iphone.slash")
+                } description: {
+                    Text("Open KDE Connect on your other devices.")
+                } actions: {
+                    Button("Pair Device…") { store.isPairingSheetShown = true }
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

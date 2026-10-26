@@ -28,6 +28,13 @@ and restarts the daemon when it is missing or on a dead bus.
   drop files on the window), Messages, phone notifications (dismiss and
   reply), plugin toggles, verification key and addresses. Pair, accept,
   reject and unpair.
+- **Plugin settings**: the gear next to a plugin opens its settings, the
+  same set as the stock app: clipboard (auto share, passwords, file size),
+  share (download folder), run commands (commands that devices can run on
+  this Mac) and presentation pointer.
+- **Pairing**: "Pair Device…" (⌘N, toolbar, menu bar) lists devices nearby,
+  adds a device by IP address, and shows this Mac's addresses. A pairing
+  request from a device shows an Accept/Reject alert.
 - **Settings window**: this Mac's device name, open at login, connection
   types (LAN, Bluetooth), device addresses for networks without discovery
   (for example Tailscale), and service supervision.
@@ -72,4 +79,5 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 
 - Supervisor log: `log stream --predicate 'subsystem == "app.kdeconnect-native"' --info`
 - Daemon output: `~/Library/Logs/KDEConnectNative/kdeconnectd.log`
+- Toggle the sidebar fast and save window frames: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --sidebar-test /tmp/frames`
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`
