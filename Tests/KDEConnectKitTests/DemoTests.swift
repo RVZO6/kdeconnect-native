@@ -27,4 +27,14 @@ struct DemoTests {
         store.showDemo(notificationCount: 3, appCount: 0)
         #expect(Set(store.selectedDevice?.notifications.map(\.appName) ?? []).count == 1)
     }
+
+    @Test func demoCanRepresentMixedReplyCapabilities() {
+        let store = KDEConnectStore()
+        store.showDemo(notificationCount: 12, appCount: 6, replyEvery: 3)
+        let notifications = store.selectedDevice?.notifications ?? []
+        #expect(notifications.count == 12)
+        #expect(notifications.filter { !$0.replyId.isEmpty }.count == 4)
+        store.showDemo(notificationCount: 12, appCount: 6, replyEvery: 0)
+        #expect(store.selectedDevice?.notifications.allSatisfy { $0.replyId.isEmpty } == true)
+    }
 }

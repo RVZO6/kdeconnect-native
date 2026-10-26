@@ -33,6 +33,11 @@ The baseline uses `2333259` with the same demo and measurement harness.
 Each run scrolls approximately 3,360 points. The maximum input interval
 still varies; this change does not remove every delay.
 
+These historical runs used the earlier two-phase harness. The current
+benchmark selects the notification scroll view, accounts for safe-area
+insets, reverses at the scroll edges, and also posts hover events. Do not
+compare new timings directly with the historical table.
+
 A single expanded group with 300 cards remains expensive. Two exploratory
 runs per version varied from about 6.3 to 11.0 seconds of CPU time. No
 improvement is claimed for that case. The layout still creates all cards
@@ -58,7 +63,7 @@ Raw samples and environment details are in [Results/2026-10-26.json](Results/202
 swift build -c release --product KDEConnectNative
 bin="$(swift build -c release --show-bin-path)/KDEConnectNative"
 for run in 1 2 3; do
-  "$bin" --demo --demo-notifications 300 --demo-apps 20 \
+  "$bin" --demo --demo-notifications 25 --demo-apps 5 --demo-reply-every 3 \
     --ui-benchmark "/tmp/kdeconnect-ui-$run.json"
 done
 
@@ -71,6 +76,12 @@ Keep other work light while the UI test runs. It opens a real window, then
 closes it. It delivers vertical events directly to the selected
 `NSScrollView`, so pointer position and focus do not select another target.
 Monitor routing is tested separately by `HorizontalSwipeTests`.
+The example has 25 notifications from five apps; every third notification
+supports replies. `--demo-reply-every 0` makes none replyable. Omitting
+that option keeps the original generated fixture, where all are replyable.
+The JSON records the effective viewport, scroll range, view-body updates,
+and posted hover events. A posted hover event is not proof that AppKit
+delivered it; check the body-update counts before interpreting that case.
 
 The input interval includes an 8 ms configured sleep and scheduling delay.
 It measures main-thread responsiveness, **not presented frame rate**. CPU
