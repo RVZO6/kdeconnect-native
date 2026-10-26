@@ -92,21 +92,12 @@ public struct KDEConnectClient: Sendable {
         let plugins = try await call(path, "org.kde.kdeconnect.device", "loadedPlugins").first?.stringArrayValue ?? []
         device.loadedPlugins = Set(plugins)
 
-        // Plugin reads are optional: one failing plugin must not hide the device.
-        if device.has(.battery),
-           let p = try? await properties(Self.pluginPath(id, "battery"), "org.kde.kdeconnect.device.battery"),
-           p["hasBattery"]?.boolValue != false, let charge = p["charge"]?.intValue, charge >= 0 {
-            device.battery = .init(charge: charge, isCharging: p["isCharging"]?.boolValue ?? false)
-        }
-        if device.has(.connectivity),
-           let p = try? await properties(Self.pluginPath(id, "connectivity_report"),
-                                         "org.kde.kdeconnect.device.connectivity_report"),
-           let type = p["cellularNetworkType"]?.stringValue, !type.isEmpty {
-            device.cellular = .init(networkType: type, strength: p["cellularNetworkStrength"]?.intValue ?? -1)
-        }
-        if device.has(.notifications) {
-            device.notifications = (try? await notifications(deviceId: id)) ?? []
-        }
+        let details = await readDeviceDetails(id: id, plugins: device.loadedPlugins,
+                                              properties: { try await properties($0, $1) },
+                                              notifications: { try await notifications(deviceId: $0) })
+        device.battery = details.battery
+        device.cellular = details.cellular
+        device.notifications = details.notifications
         return device
     }
 
