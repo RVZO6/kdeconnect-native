@@ -21,6 +21,14 @@ struct KDEConnectNativeApp: App {
         .windowLevel(keepWindowOnTop ? .floating : .normal)
         .defaultLaunchBehavior(.suppressed)
         .commands {
+            // The View menu's sidebar command uses the same animated path
+            // as the sidebar button.
+            CommandGroup(replacing: .sidebar) {
+                Button("Toggle Sidebar") {
+                    NotificationCenter.default.post(name: .toggleSidebarRequest, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+            }
             CommandGroup(after: .newItem) {
                 Button("Pair Device…") {
                     WindowOpener.shared.showMainWindow()
@@ -47,16 +55,23 @@ struct KDEConnectNativeApp: App {
             SettingsView()
                 .environment(store)
         }
+        // At the main window's level; at the normal level, the floating main
+        // window would cover it.
+        .windowLevel(keepWindowOnTop ? .floating : .normal)
     }
 }
 
 struct StatusIcon: View {
     let store: KDEConnectStore
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
-            .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onAppear {
+                WindowOpener.shared.open = { openWindow(id: MainWindow.id) }
+                WindowOpener.shared.openSettings = { openSettings() }
+            }
             .onChange(of: store.pairingRequests) { _, requests in PairingPrompt.requestsChanged(requests) }
             .onChange(of: store.pairingRequests.map(\.id)) { old, new in
                 // Ask at once when a device wants to pair, also without the window.
@@ -87,6 +102,7 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
+    var openSettings: (() -> Void)?
     /// Set at launch; used by the debug capture to select a device.
     var store: KDEConnectStore?
     private var closeObserver: NSObjectProtocol?
@@ -123,7 +139,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchedAsLoginItem = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        SidebarToggleQueue.install()
         let event = NSAppleEventManager.shared().currentAppleEvent
         launchedAsLoginItem = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
@@ -174,6 +189,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let index = args.firstIndex(of: "--swipe-test"), index + 1 < args.count {
             await SidebarTest.swipeTest(outputDirectory: args[index + 1])
+            return
+        }
+        if args.contains("--tab-test") {
+            await SidebarTest.tabTest()
+            return
+        }
+        if args.contains("--resize-test") {
+            await SidebarTest.resizeTest()
             return
         }
         if args.contains("--sidebar-test") {
@@ -270,39 +293,15 @@ enum SidebarTest {
     static func run() async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(3))
-        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
-              let split = findSplitView(in: window.contentView) else {
-            print("no split view")
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            print("no window")
             NSApp.terminate(nil)
             return
         }
-        // The x-position of the detail column: the sidebar's visible width.
-        func width() -> String {
-            let x = split.arrangedSubviews.count > 1 ? Int(split.arrangedSubviews[1].frame.minX) : -1
-            let collapsed = (split.delegate as? NSSplitViewController)?.splitViewItems.first?.isCollapsed
-            return "\(x)\(collapsed == true ? "c" : "")"
-        }
-        let controller = split.delegate as? NSSplitViewController
-        print("controller:", controller.map { String(describing: type(of: $0)) } ?? "none", "key:", window.isKeyWindow)
-        func toggle() { controller?.toggleSidebar(nil) }
-        func sample(_ label: String, for duration: Duration, toggleAt times: [Int] = []) async {
-            var line = "\(label):"
-            let start = ContinuousClock.now
-            var tick = 0
-            var toggles = times
-            while ContinuousClock.now - start < duration {
-                let ms = tick * 25
-                while let next = toggles.first, next <= ms {
-                    toggles.removeFirst()
-                    toggle()
-                    line += " |T"
-                }
-                line += " \(width())"
-                tick += 1
-                try? await Task.sleep(for: .milliseconds(25))
-            }
-            print(line)
-        }
+        // Smaller than the maximum, where the user saw the window jump.
+        window.setFrame(NSRect(x: 200, y: 200, width: 820, height: 600), display: true)
+        try? await Task.sleep(for: .milliseconds(400))
+        func toggle() { NotificationCenter.default.post(name: .toggleSidebarRequest, object: nil) }
         print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
         // Logs every toolbar item that is added or removed while the test runs.
         nonisolated(unsafe) var changes: [String] = []
@@ -331,9 +330,25 @@ enum SidebarTest {
         toggle()
         try? await Task.sleep(for: .milliseconds(600))
         print("captures in", NSTemporaryDirectory())
-        await sample("single", for: .milliseconds(900), toggleAt: [0])
-        await sample("back", for: .milliseconds(900), toggleAt: [0])
-        await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
+        // Fast frames of the whole window during one close and one open.
+        if let frameView = window.contentView?.superview {
+            let dir = NSTemporaryDirectory() + "kdcn-toggle-frames"
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            var shot = 0
+            for _ in 0..<2 {
+                toggle()
+                for _ in 0..<14 {
+                    if let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) {
+                        frameView.cacheDisplay(in: frameView.bounds, to: rep)
+                        try? rep.representation(using: .png, properties: [:])?
+                            .write(to: URL(fileURLWithPath: String(format: "%@/f%02d.png", dir, shot)))
+                    }
+                    shot += 1
+                    try? await Task.sleep(for: .milliseconds(30))
+                }
+            }
+            print("toggle frames in", dir)
+        }
         print("toolbar changes during the test:", changes.isEmpty ? ["none"] : changes)
         NSApp.terminate(nil)
     }
@@ -448,6 +463,79 @@ enum SidebarTest {
         NSApp.terminate(nil)
     }
 
+    /// Debug aid: `--demo --tab-test` switches the device page between its
+    /// tabs and prints how long the main thread takes to lay out and draw
+    /// the window after each switch.
+    static func tabTest() async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        var results: [String] = []
+        for name in ["Plugins", "Details", "Overview", "Plugins", "Details", "Overview", "Plugins", "Details", "Overview"] {
+            func ms(_ d: Duration) -> String { String(format: "%.1f", Double(d / .microseconds(1)) / 1000) }
+            let t0 = ContinuousClock.now
+            NotificationCenter.default.post(name: .debugSelectPage, object: name)
+            let t1 = ContinuousClock.now
+            window.contentView?.layoutSubtreeIfNeeded()
+            let t2 = ContinuousClock.now
+            window.displayIfNeeded()
+            let t3 = ContinuousClock.now
+            // Let SwiftUI finish the update it scheduled, then draw again.
+            await Task.yield()
+            window.contentView?.layoutSubtreeIfNeeded()
+            let t4 = ContinuousClock.now
+            window.displayIfNeeded()
+            let t5 = ContinuousClock.now
+            results.append("\(name) \(ms(t5 - t0)) [state \(ms(t1 - t0)) layout \(ms(t2 - t1)) draw \(ms(t3 - t2)) layout2 \(ms(t4 - t3)) draw2 \(ms(t5 - t4))]")
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        print("tab switches:\n " + results.joined(separator: "\n "))
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --resize-test` drags the sidebar's edge 60 pt to
+    /// the right with posted mouse events and prints the stored width.
+    static func resizeTest() async {
+        UserDefaults.standard.set(250.0, forKey: "sidebarWidth")
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        let before = UserDefaults.standard.double(forKey: "sidebarWidth")
+        // A click in an inactive window only activates it, so start active.
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .milliseconds(500))
+        func post(_ type: NSEvent.EventType, x: CGFloat) {
+            let point = NSPoint(x: x, y: window.contentLayoutRect.midY)
+            if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                              clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) {
+                NSApp.postEvent(event, atStart: false)
+            }
+        }
+        post(.leftMouseDown, x: 251)
+        for step in 1...12 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(.leftMouseDragged, x: 251 + CGFloat(step * 5))
+        }
+        post(.leftMouseUp, x: 311)
+        try? await Task.sleep(for: .milliseconds(400))
+        print("sidebar width before \(before), after \(UserDefaults.standard.double(forKey: "sidebarWidth"))")
+        UserDefaults.standard.set(before, forKey: "sidebarWidth")
+        // Then open Settings and print each window's level: Settings must
+        // not sit below the floating main window.
+        WindowOpener.shared.openSettings?()
+        try? await Task.sleep(for: .seconds(1))
+        for w in NSApp.windows where w.isVisible {
+            print("window \(w.title.isEmpty ? w.identifier?.rawValue ?? "?" : w.title): level \(w.level.rawValue)")
+        }
+        NSApp.terminate(nil)
+    }
+
     /// Opens the main window and saves an image of it, title bar included.
     static func captureWindow(to path: String) async {
         WindowOpener.shared.showMainWindow()
@@ -482,12 +570,5 @@ enum SidebarTest {
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
         }
         NSApp.terminate(nil)
-    }
-
-    private static func findSplitView(in view: NSView?) -> NSSplitView? {
-        guard let view else { return nil }
-        if let split = view as? NSSplitView { return split }
-        for sub in view.subviews { if let found = findSplitView(in: sub) { return found } }
-        return nil
     }
 }

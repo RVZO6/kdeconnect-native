@@ -13,7 +13,9 @@ struct DeviceDetail: View {
 
     @Environment(KDEConnectStore.self) private var store
     let device: Device
-    @State private var page: Page = .overview
+    /// The selected tab. Only the page slots and the tab picker read it, so a
+    /// switch does not re-evaluate and lay out the whole device view.
+    @State private var selection = PageSelection()
     @State private var confirmUnpair = false
     @State private var dropTargeted = false
     @State private var settingsPlugin: PluginSheetItem?
@@ -24,55 +26,48 @@ struct DeviceDetail: View {
     var body: some View {
         let _ = UIBenchmark.recordUpdate("DeviceDetail")
         Group {
-            if device.isPaired && page == .overview {
-                // Cards, not form rows, so that a card can be swiped off.
-                ScrollView {
-                    // Battery, plugin and header updates must not rebuild
-                    // an unchanged notification list.
-                    NotificationCards(deviceId: device.id, isReachable: device.isReachable,
-                                      notifications: device.notifications)
-                        .equatable()
-                        .frame(maxWidth: 704)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                        .frame(maxWidth: .infinity)
-                }
-                .scrollPosition($overviewScroll)
-                .onReceive(NotificationCenter.default.publisher(for: .debugScrollPage)) { _ in
-                    overviewScroll.scrollTo(y: 160)
+            if device.isPaired {
+                // All three pages stay built; a switch only changes which one
+                // shows. Rebuilding a page on every switch cost 50-75 ms on
+                // the main thread, which showed as a stutter.
+                ZStack {
+                    PageSlot(selection: selection, page: .overview) { overviewPage }
+                    PageSlot(selection: selection, page: .plugins) {
+                        Form { pluginsSection }
+                            .formStyle(.grouped)
+                    }
+                    PageSlot(selection: selection, page: .details) {
+                        Form {
+                            detailsSection
+                            Section {
+                                Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
+                            }
+                        }
+                        .formStyle(.grouped)
+                    }
                 }
             } else {
                 Form {
-                    if !device.isPaired {
-                        pairingSection
-                        detailsSection
-                    } else if page == .plugins {
-                        pluginsSection
-                    } else {
-                        detailsSection
-                        Section {
-                            Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
-                        }
-                    }
+                    pairingSection
+                    detailsSection
                 }
                 .formStyle(.grouped)
             }
         }
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
+        .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in
+            if let name = note.object as? String, let target = Page(rawValue: name) { selection.page = target }
+        }
         .safeAreaBar(edge: .top) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 header
                 if device.isPaired, device.isReachable {
                     actionsBar.frame(maxWidth: .infinity)
                 }
                 if device.isPaired {
-                    Picker("Page", selection: $page) {
-                        ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.tabs)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
+                    PagePicker(selection: selection)
+                        .frame(maxWidth: .infinity)
                 }
             }
             // Same width and inset as the grouped form's rows, so the tile
@@ -80,8 +75,7 @@ struct DeviceDetail: View {
             .padding(.horizontal, 11)
             .frame(maxWidth: 704)
             .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
+            .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
             // The system draws a hairline under the bar. This one pixel, on
             // top of it in both states, makes the line clearer and keeps it
@@ -116,13 +110,32 @@ struct DeviceDetail: View {
         }
     }
 
+    /// Cards, not form rows, so that a card can be swiped off.
+    private var overviewPage: some View {
+        ScrollView {
+            // Battery, plugin and header updates must not rebuild
+            // an unchanged notification list.
+            NotificationCards(deviceId: device.id, isReachable: device.isReachable,
+                              notifications: device.notifications)
+                .equatable()
+                .frame(maxWidth: 704)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity)
+        }
+        .scrollPosition($overviewScroll)
+        .onReceive(NotificationCenter.default.publisher(for: .debugScrollPage)) { _ in
+            overviewScroll.scrollTo(y: 160)
+        }
+    }
+
     private var canShare: Bool { device.isReachable && device.has(.share) }
 
     // MARK: Sections
 
     private var header: some View {
         HStack(spacing: 16) {
-            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 48, muted: !device.isReachable)
+            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 44, muted: !device.isReachable)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(device.name).font(.title.weight(.semibold)).lineLimit(1)
@@ -139,7 +152,7 @@ struct DeviceDetail: View {
                     .help(battery.isCharging ? "Charging" : "On battery")
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
     }
 
     private var statusLine: String {
@@ -352,6 +365,43 @@ extension Notification.Name {
     /// Debug aid: scrolls the Overview page, so that captures can show
     /// content under the header bar.
     static let debugScrollPage = Notification.Name("KDEConnectNativeDebugScrollPage")
+    /// Debug aid: selects a page of the device view by its name.
+    static let debugSelectPage = Notification.Name("KDEConnectNativeDebugSelectPage")
     /// Debug aid: expands or collapses every notification stack.
     static let debugToggleStacks = Notification.Name("KDEConnectNativeDebugToggleStacks")
+}
+
+/// The selected tab of a device view.
+@MainActor
+@Observable
+private final class PageSelection {
+    var page: DeviceDetail.Page = .overview
+}
+
+/// One device page. It stays built while hidden; only this small view
+/// updates when the tab changes, not the page inside it.
+private struct PageSlot<Content: View>: View {
+    let selection: PageSelection
+    let page: DeviceDetail.Page
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        let visible = selection.page == page
+        content
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .accessibilityHidden(!visible)
+    }
+}
+
+private struct PagePicker: View {
+    @Bindable var selection: PageSelection
+
+    var body: some View {
+        Picker("Page", selection: $selection.page) {
+            ForEach(DeviceDetail.Page.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.tabs)
+        .labelsHidden()
+    }
 }
