@@ -1,0 +1,18 @@
+This distribution includes an unmodified official KDE Connect macOS app.
+KDE Connect and its dependencies remain separate upstream components. Their
+copyright and license files are in:
+    Contents/Helpers/KDE Connect.app/Contents/Resources/licenses
+
+KDE Connect binary: 26.08.2 (Apple Silicon)
+https://download.kde.org/stable/release-service/26.08.2/macos/kdeconnect-kde-macos-clang-arm64.dmg
+KDE Connect license texts are also in Contents/Resources/UpstreamLicenses.
+The matching source archive is supplied beside the ZIP in GitHub Releases.
+KDE Connect corresponding source and license files:
+https://download.kde.org/stable/release-service/26.08.2/src/kdeconnect-kde-26.08.2.tar.xz
+Upstream project and build/dependency instructions:
+https://invent.kde.org/network/kdeconnect-kde
+https://invent.kde.org/packaging/craft-blueprints-kde
+
+KDE Connect is not built or modified by this project's CI. The full upstream
+app, including its dependency libraries and license notices, is preserved.
+This native front end is not an official KDE product.

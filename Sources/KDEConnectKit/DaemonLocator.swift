@@ -12,15 +12,33 @@ public struct DaemonLocator: Sendable {
     public static let addressFile = "/tmp/private_dbus_address"
     public static let bundleIdentifier = "org.kde.kdeconnect"
 
-    public init() {}
+    private let applicationBundleURL: URL
 
-    /// The KDE Connect app bundle, found by bundle identifier or default path.
+    public init(applicationBundleURL: URL = Bundle.main.bundleURL) {
+        self.applicationBundleURL = applicationBundleURL
+    }
+
+    /// Prefer the pinned helper in release builds. Source builds can use an
+    /// installed KDE Connect app without downloading or compiling upstream.
     public var bundleURL: URL? {
+        if let embedded = Self.embeddedBundle(in: applicationBundleURL) {
+            return embedded
+        }
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleIdentifier) {
             return url
         }
         let fallback = URL(fileURLWithPath: "/Applications/KDE Connect.app")
         return FileManager.default.fileExists(atPath: fallback.path) ? fallback : nil
+    }
+
+    static func embeddedBundle(in applicationBundleURL: URL) -> URL? {
+        let helper = applicationBundleURL.appendingPathComponent("Contents/Helpers/KDE Connect.app")
+        let fm = FileManager.default
+        guard ["kdeconnectd", "dbus-daemon", "kdeconnect-sms"].allSatisfy({
+            fm.isExecutableFile(atPath: helper.appendingPathComponent("Contents/MacOS/\($0)").path)
+        }), fm.fileExists(atPath: helper.appendingPathComponent("Contents/Resources/dbus-1/session.conf").path)
+        else { return nil }
+        return helper
     }
 
     public var daemonURL: URL? { executable("kdeconnectd") }

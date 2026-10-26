@@ -15,9 +15,9 @@ CLANKER TEXT STARTS HERE
 
 A native SwiftUI app for KDE Connect on macOS. It replaces the Qt window
 (`kdeconnect-app`) and the Qt menu bar indicator, but keeps the official
-`kdeconnectd` daemon from
-`/Applications/KDE Connect.app`. The protocol, pairing and plugins stay
-upstream code. This app is only the UI and a supervisor.
+`kdeconnectd` daemon. Release builds include the official pre-built KDE
+Connect app. Source builds can also use `/Applications/KDE Connect.app`.
+The protocol, pairing, and plugins stay upstream code. This app is only the UI and a supervisor.
 
 ## Why
 
@@ -63,19 +63,71 @@ and restarts the daemon when it is missing or on a dead bus.
 ## Requirements
 
 - macOS 27 or later.
-- KDE Connect.app (the official build) in `/Applications`. Tested with 26.08.
+- Apple Silicon for the downloadable release.
+- Source-only builds need the official KDE Connect.app in `/Applications`.
+  Bundled builds download it automatically; no KDE or Qt build is needed.
+
+## Download
+
+Get the ZIP from [GitHub Releases](https://github.com/RVZO6/kdeconnect-native/releases).
+The first release is **0.0.1-alpha.1**, marked as a pre-release. Extract the ZIP
+and move **KDE Connect Native.app** to Applications before opening it. The
+release includes KDE Connect; do not install a second copy for this app.
+
+The alpha is ad-hoc signed, not Developer ID signed or notarized. If macOS
+blocks it and you trust the download, use **System Settings → Privacy &
+Security → Open Anyway** after the first launch attempt. Do not disable
+Gatekeeper for the whole system.
 
 ## Build and install
 
 ```sh
-Scripts/build-app.sh            # builds "build/KDE Connect Native.app"
-Scripts/build-app.sh --install  # also copies it to ~/Applications and opens it
-swift test                      # unit and regression tests
+Scripts/build-app.sh                       # uses an installed KDE Connect app
+Scripts/build-app.sh --bundle-kdeconnect   # downloads and includes KDE Connect
+Scripts/build-app.sh --bundle-kdeconnect --install  # copies to ~/Applications and opens it
+swift test                                 # unit and regression tests
+Scripts/package-release.sh                 # self-contained arm64 ZIP + SHA-256
+Scripts/verify-release.sh                  # verify ZIP and relocated private bus
 ```
 
 Then remove the stock "KDE Connect" from **System Settings → General → Login
 Items**, and turn on "Open at login" in this app's settings. Do not run the
 stock indicator or `kdeconnect-app` at the same time.
+
+## CI and releases
+
+GitHub Actions tests and packages the app on pushes to `master`, pull requests,
+and manual runs. Download the ZIP from the run's **Artifacts** section. CI uses
+an Apple Silicon `xcode-27` runner because both the app and its Icon Composer
+assets require macOS 27. KDE Connect is **not compiled**.
+
+`Scripts/kdeconnect-version.env` pins the official KDE download URL and SHA-256.
+The disk image is cached by that file's hash, and its checksum is checked on
+every build, including cache hits. The full upstream app is copied unchanged
+into `Contents/Helpers`, with its signatures, libraries, plugins, and licenses.
+The native app uses this helper before it checks for an installed KDE Connect.
+
+The upstream pin belongs to each source commit and release tag, not to a global
+CI setting. To upgrade KDE Connect for a later release, change the version, URL,
+and checksum together, then test the resulting archive. Old tags keep their
+old pin. KDE publishes these macOS binaries on [its download service](https://kdeconnect.kde.org/download.html),
+not GitHub Releases. For a local build with another pre-built app, set
+`KDECONNECT_APP_PATH="/path/to/KDE Connect.app"` and pass `--bundle-kdeconnect`.
+Set `KDECONNECT_CACHE_DIR` to relocate the download cache if required.
+
+To publish a release:
+
+1. Update `VERSION`, the numeric `CFBundleShortVersionString`, and
+   `CFBundleVersion` in `Resources/Info.plist`. The first alpha uses `0.0.1`,
+   build `1a1`, and tag `v0.0.1-alpha.1`.
+2. Update `.github/RELEASE_NOTES.md` and the upstream pin/notices if required.
+3. Commit and push. Create and push a tag that equals `v` plus `VERSION`.
+4. CI tests, packages, verifies, and uploads the ZIP, checksum, and matching
+   KDE Connect source archive. Only after that job passes does it publish a GitHub **pre-release**.
+
+The workflow currently marks all tag releases as pre-releases. Change that
+policy before publishing a stable release. No signing secrets are needed for
+these alpha builds. Developer ID signing and notarization are not configured.
 
 ## Design
 

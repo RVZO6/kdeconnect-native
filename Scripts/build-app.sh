@@ -4,6 +4,15 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+install=false
+bundle=false
+for arg in "$@"; do
+    case "$arg" in
+        --install) install=true ;;
+        --bundle-kdeconnect) bundle=true ;;
+        *) echo "Usage: $0 [--install] [--bundle-kdeconnect]" >&2; exit 2 ;;
+    esac
+done
 config=release
 app="build/KDE Connect Native.app"
 
@@ -24,10 +33,25 @@ xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$app/Contents/Resourc
 rm -f "$partial"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" \
     -c "Add :CFBundleIconName string AppIcon" "$app/Contents/Info.plist"
+# Keep the full upstream bundle and its signatures, Qt plugins, and licenses.
+# Do not use codesign --deep to re-sign third-party code.
+if "$bundle"; then
+    upstream="${KDECONNECT_APP_PATH:-}"
+    if [[ -z "$upstream" ]]; then upstream="$(Scripts/fetch-kdeconnect.sh)"; fi
+    for executable in kdeconnectd dbus-daemon kdeconnect-sms; do
+        test -x "$upstream/Contents/MacOS/$executable"
+    done
+    test -f "$upstream/Contents/Resources/dbus-1/session.conf"
+    codesign --verify --deep --strict "$upstream"
+    mkdir -p "$app/Contents/Helpers"
+    ditto "$upstream" "$app/Contents/Helpers/KDE Connect.app"
+    cp Resources/ThirdPartyNotices.txt "$app/Contents/Resources/"
+fi
 codesign --force --sign - --timestamp=none "$app"
+codesign --verify --deep --strict "$app"
 echo "Built $app"
 
-if [[ "${1:-}" == "--install" ]]; then
+if "$install"; then
     dest="$HOME/Applications/KDE Connect Native.app"
     pkill -x KDEConnectNative || true
     # Opening the app while the old instance still quits fails with error -600.
