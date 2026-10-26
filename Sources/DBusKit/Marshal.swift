@@ -108,15 +108,19 @@ struct DBusEncoder {
         appendRaw(value)
     }
 
-    mutating func appendString(_ s: String) {
+    mutating func appendString(_ s: String) throws {
         let bytes = Array(s.utf8)
+        guard !bytes.contains(0) else { throw DBusError.malformed("string contains NUL") }
         append(UInt32(bytes.count))
         data.append(contentsOf: bytes)
         data.append(0)
     }
 
-    mutating func appendSignature(_ s: String) {
+    mutating func appendSignature(_ s: String) throws {
         let bytes = Array(s.utf8)
+        // The wire format stores the length in one byte; the spec limit is 255.
+        guard bytes.count <= 255, !bytes.contains(0) else { throw DBusError.invalidSignature(s) }
+        _ = try DBusType.parse(s)
         data.append(UInt8(bytes.count))
         data.append(contentsOf: bytes)
         data.append(0)
@@ -133,8 +137,8 @@ struct DBusEncoder {
         case .int64(let v): append(v)
         case .uint64(let v): append(v)
         case .double(let v): append(v.bitPattern)
-        case .string(let s), .objectPath(let s): appendString(s)
-        case .signature(let s): appendSignature(s)
+        case .string(let s), .objectPath(let s): try appendString(s)
+        case .signature(let s): try appendSignature(s)
         case .unixFD(let v): append(v)
         case .array(let element, let items):
             // Parse as a whole array type, because a dict entry is only valid inside one.
@@ -164,7 +168,7 @@ struct DBusEncoder {
             pad(to: 8)
             for field in fields { try encode(field) }
         case .variant(let inner):
-            appendSignature(inner.signature)
+            try appendSignature(inner.signature)
             try encode(inner)
         }
     }
@@ -223,6 +227,7 @@ struct DBusDecoder {
     private mutating func readStringBytes(_ length: Int) throws -> String {
         guard length >= 0, offset + length + 1 <= end else { throw DBusError.truncated }
         guard bytes[offset + length] == 0 else { throw DBusError.malformed("string not NUL-terminated") }
+        guard !bytes[offset..<(offset + length)].contains(0) else { throw DBusError.malformed("string contains NUL") }
         guard let s = String(bytes: bytes[offset..<(offset + length)], encoding: .utf8) else {
             throw DBusError.malformed("string is not UTF-8")
         }

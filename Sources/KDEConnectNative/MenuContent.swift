@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuContent: View {
     @Environment(KDEConnectStore.self) private var store
+    @State private var listHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -56,12 +57,15 @@ struct MenuContent: View {
             StatusMessage(symbol: "iphone.radiowaves.left.and.right", title: "No paired devices",
                           detail: "Open KDE Connect on your phone, then pair it below.")
         } else {
-            // Scroll only when the cards do not fit, so the panel keeps its natural height.
-            ViewThatFits(in: .vertical) {
+            // One scroll view whose height follows its content up to a limit.
+            // A single hierarchy keeps the card state (expanded lists, reply
+            // drafts) when the content grows past the limit.
+            ScrollView {
                 pairedList
-                ScrollView { pairedList }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
             }
-            .frame(maxHeight: 460)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(max(listHeight, 1), 460))
         }
         if !store.availableDevices.isEmpty {
             SectionTitle("Available devices")

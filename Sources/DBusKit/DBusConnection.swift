@@ -22,11 +22,17 @@ public final class DBusConnection: @unchecked Sendable {
         let path = try DBusAddress.unixPath(address)
         let connection = try DBusConnection(address: address, socketPath: path)
         connection.startReader()
-        let reply = try await connection.call(
-            destination: "org.freedesktop.DBus", path: "/org/freedesktop/DBus",
-            interface: "org.freedesktop.DBus", member: "Hello")
-        connection.lock.withLock { connection.uniqueName = reply.first?.stringValue }
-        return connection
+        do {
+            let reply = try await connection.call(
+                destination: "org.freedesktop.DBus", path: "/org/freedesktop/DBus",
+                interface: "org.freedesktop.DBus", member: "Hello", timeout: .seconds(5))
+            connection.lock.withLock { connection.uniqueName = reply.first?.stringValue }
+            return connection
+        } catch {
+            // The reader thread holds the connection until the socket closes.
+            connection.close()
+            throw error
+        }
     }
 
     // The initializer is complete once `fd` is set, so deinit also runs
@@ -68,6 +74,10 @@ public final class DBusConnection: @unchecked Sendable {
         try authenticate()
         timeout = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        // A bus that stops reading must not block writers for ever. A write
+        // that times out fails, and the caller then closes the connection.
+        timeout = timeval(tv_sec: 10, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     }
 
     // MARK: Authentication
@@ -205,7 +215,13 @@ public final class DBusConnection: @unchecked Sendable {
             return nextSerial
         }
         message.serial = serial
-        try writeAll(try message.serialize())
+        let bytes = try message.serialize()
+        do {
+            try writeAll(bytes)
+        } catch {
+            close()
+            throw error
+        }
         return serial
     }
 
@@ -227,12 +243,22 @@ public final class DBusConnection: @unchecked Sendable {
                 }
                 serialBox.value = serial
                 message.serial = serial
-                try writeAll(try message.serialize())
-            } catch {
-                if let serial = serialBox.value {
-                    lock.withLock { _ = pending.removeValue(forKey: serial) }
+                let bytes = try message.serialize()
+                do {
+                    try writeAll(bytes)
+                } catch {
+                    // A failed or partial write leaves the stream in an
+                    // unknown state. close() also fails this call.
+                    close()
+                    return
                 }
-                continuation.resume(throwing: error)
+            } catch {
+                // Registration or serialization failed; nothing was written.
+                // Resume only if close() has not already done it.
+                let owned = serialBox.value.map { serial in
+                    lock.withLock { pending.removeValue(forKey: serial) != nil }
+                } ?? true
+                if owned { continuation.resume(throwing: error) }
                 return
             }
             let serial = serialBox.value!

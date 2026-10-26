@@ -84,4 +84,36 @@ import Testing
         #expect(parsed?["isReachable"]?.boolValue == true)
         #expect(parsed?["charge"]?.intValue == 80)
     }
+
+    @Test func rejectsOverlongSignature() {
+        var encoder = DBusEncoder()
+        #expect(throws: DBusError.self) { try encoder.encode(.signature(String(repeating: "s", count: 256))) }
+        var message = DBusMessage.methodCall(destination: "d", path: "/p", interface: "i.f", member: "m",
+                                             body: Array(repeating: .byte(1), count: 256))
+        message.serial = 1
+        #expect(throws: DBusError.self) { try message.serialize() }
+    }
+
+    @Test func rejectsEmbeddedNul() throws {
+        var encoder = DBusEncoder()
+        #expect(throws: DBusError.self) { try encoder.encode(.string("a\u{0}b")) }
+        var d = DBusDecoder(bytes: [3, 0, 0, 0, 0x61, 0, 0x62, 0], bigEndian: false)
+        #expect(throws: DBusError.self) { try d.decode(signature: "s") }
+    }
+
+    @Test func rejectsBodyWithoutSignature() throws {
+        var message = DBusMessage.methodCall(destination: "d", path: "/p", interface: "i.f", member: "m")
+        message.serial = 1
+        var bytes = try message.serialize()
+        // Claim a 4-byte body that the header does not describe.
+        bytes[4] = 4
+        bytes += [0, 0, 0, 0]
+        #expect(throws: DBusError.self) { try DBusMessage.parse(bytes) }
+    }
+
+    @Test func rejectsReplyWithoutReplySerial() throws {
+        var reply = DBusMessage(kind: .methodReturn)
+        reply.serial = 2
+        #expect(throws: DBusError.self) { try DBusMessage.parse(try reply.serialize()) }
+    }
 }

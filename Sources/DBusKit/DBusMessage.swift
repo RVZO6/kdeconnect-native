@@ -66,7 +66,7 @@ public struct DBusMessage: Sendable, Equatable {
         if !body.isEmpty { field(8, .signature(bodySignature)) }
 
         var header = DBusEncoder()
-        header.encode(fixed: [UInt8(ascii: "l"), kind.rawValue, flags.rawValue, 1])
+        for byte in [UInt8(ascii: "l"), kind.rawValue, flags.rawValue, 1] { header.appendRaw(byte) }
         header.append(UInt32(bodyEncoder.data.count))
         header.append(serial)
         try header.encode(.array(element: "(yv)", fields))
@@ -116,24 +116,26 @@ public struct DBusMessage: Sendable, Equatable {
             case 2: message.interface = value.stringValue
             case 3: message.member = value.stringValue
             case 4: message.errorName = value.stringValue
-            case 5: if case .uint32(let s) = value { message.replySerial = s }
+            case 5:
+                guard case .uint32(let s) = value else { throw DBusError.malformed("REPLY_SERIAL is not a uint32") }
+                message.replySerial = s
             case 6: message.destination = value.stringValue
             case 7: message.sender = value.stringValue
-            case 8: signature = value.stringValue ?? ""
+            case 8:
+                guard case .signature(let s) = value else { throw DBusError.malformed("SIGNATURE is not a signature") }
+                signature = s
             default: break
             }
         }
         try d.align(8)
         guard d.offset + bodyLength <= bytes.count else { throw DBusError.truncated }
+        guard !(signature.isEmpty && bodyLength > 0) else { throw DBusError.malformed("body without signature") }
         var bodyDecoder = DBusDecoder(bytes: bytes, bigEndian: bigEndian, offset: d.offset, end: d.offset + bodyLength)
         message.body = try bodyDecoder.decode(signature: signature)
+        guard bodyDecoder.offset == bodyDecoder.end else { throw DBusError.malformed("body length mismatch") }
+        if kind == .methodReturn || kind == .error, message.replySerial == nil {
+            throw DBusError.malformed("reply without REPLY_SERIAL")
+        }
         return message
-    }
-}
-
-extension DBusEncoder {
-    mutating func encode(fixed bytes: [UInt8]) {
-        pad(to: 1)
-        for b in bytes { appendRaw(b) }
     }
 }

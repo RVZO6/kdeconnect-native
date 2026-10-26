@@ -42,7 +42,11 @@ public final class KDEConnectStore {
     @ObservationIgnored private var lastLaunch: ContinuousClock.Instant?
     @ObservationIgnored private var launchBackoff: Duration = .seconds(10)
     @ObservationIgnored private var unreachableSince: ContinuousClock.Instant?
-    @ObservationIgnored private var isRestarting = false
+    /// The tail of the lifecycle queue. Supervisor steps, wake handling and
+    /// restarts run one at a time, because each one suspends at many points
+    /// and must not see the others' half-done work.
+    @ObservationIgnored private var lifecycleTail: Task<Void, Never>?
+    @ObservationIgnored private var restartQueued = false
     @ObservationIgnored private var wakeObserver: NSObjectProtocol?
 
     public init() {
@@ -65,7 +69,7 @@ public final class KDEConnectStore {
         superviseTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.supervise()
+                await self.serialized { await $0.superviseStep() }
                 let interval: Duration = self.status == .connected ? .seconds(5) : .seconds(2)
                 try? await Task.sleep(for: interval)
             }
@@ -78,16 +82,39 @@ public final class KDEConnectStore {
     }
 
     private func handleWake() async {
-        // After sleep the LAN links are often dead. Ask for a fresh
-        // announcement so that devices reconnect without a manual refresh.
-        try? await client?.forceOnNetworkChange()
-        await supervise()
-        scheduleRefresh()
+        await serialized { store in
+            // After sleep the LAN links are often dead. Ask for a fresh
+            // announcement so that devices reconnect without a manual refresh.
+            try? await store.client?.forceOnNetworkChange()
+            await store.superviseStep()
+            store.scheduleRefresh()
+        }
     }
 
-    /// One supervisor step.
-    func supervise() async {
-        guard !isRestarting else { return }
+    /// Runs `body` after every lifecycle operation queued before it.
+    private func serialized(_ body: @escaping @MainActor (KDEConnectStore) async -> Void) async {
+        let previous = lifecycleTail
+        let task = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self else { return }
+            await body(self)
+        }
+        lifecycleTail = task
+        await task.value
+    }
+
+    /// Starts, or restarts, are allowed at most once per backoff interval.
+    /// The interval doubles on each attempt and resets after a good connection.
+    private func takeLaunchSlot() -> Bool {
+        let now = ContinuousClock.now
+        if let lastLaunch, now - lastLaunch < launchBackoff { return false }
+        launchBackoff = lastLaunch == nil ? .seconds(10) : min(launchBackoff * 2, .seconds(300))
+        lastLaunch = now
+        return true
+    }
+
+    /// One supervisor step. Call it only through `serialized`.
+    private func superviseStep() async {
         guard locator.bundleURL != nil else {
             disconnect()
             status = .notInstalled
@@ -109,8 +136,6 @@ public final class KDEConnectStore {
             case .unreachable: break
             }
         }
-        // A restart may have begun while this step waited.
-        guard !isRestarting else { return }
         status = .daemonStopped
         devices = []
         guard autoStartDaemon else { return }
@@ -122,16 +147,14 @@ public final class KDEConnectStore {
             let grace: Duration = busAlive ? .seconds(20) : .seconds(4)
             let since = unreachableSince ?? now
             unreachableSince = since
-            if now - since >= grace {
+            if now - since >= grace, takeLaunchSlot() {
                 log.notice("kdeconnectd runs but is unreachable (bus alive: \(busAlive)); restarting it")
-                await restartDaemon()
+                await restartStep()
             }
             return
         }
         unreachableSince = nil
-        if let lastLaunch, now - lastLaunch < launchBackoff { return }
-        launchBackoff = lastLaunch == nil ? .seconds(10) : min(launchBackoff * 2, .seconds(300))
-        lastLaunch = now
+        guard takeLaunchSlot() else { return }
         log.notice("kdeconnectd is not running; starting it")
         await launch(reusing: busAlive ? currentAddress : nil)
     }
@@ -206,15 +229,22 @@ public final class KDEConnectStore {
     /// Stops kdeconnectd and all bundled dbus-daemons (including stale
     /// ones), then starts a fresh daemon.
     public func restartDaemon() async {
-        guard !isRestarting else { return }
-        isRestarting = true
-        defer { isRestarting = false }
+        // Pressing the button many times must not queue many restarts.
+        guard !restartQueued else { return }
+        restartQueued = true
+        await serialized { store in
+            store.restartQueued = false
+            await store.restartStep()
+        }
+    }
+
+    /// Call it only through `serialized`.
+    private func restartStep() async {
         log.notice("Restarting kdeconnectd and its private buses")
         disconnect()
         status = .starting
         devices = []
         await process.stopAll()
-        lastLaunch = .now
         unreachableSince = nil
         await launch(reusing: nil)
     }

@@ -15,8 +15,38 @@ public struct DaemonProcess: Sendable {
             .appendingPathComponent("Library/Logs/KDEConnectNative/kdeconnectd.log")
     }
 
-    /// PIDs of processes whose executable is `url`, owned by this user.
-    static func pids(runningExecutable url: URL) -> [pid_t] {
+    /// A process, identified by PID and start time, so that a reused PID
+    /// never matches a process that has exited.
+    struct ProcessRecord: Equatable {
+        let pid: pid_t
+        let startSeconds: UInt64
+        let startMicroseconds: UInt64
+
+        /// Reads the record for `pid` if it belongs to this user and runs `path`.
+        init?(pid: pid_t, executablePath path: String) {
+            var info = proc_bsdinfo()
+            let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+            guard pid > 0, proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size, info.pbi_uid == getuid(),
+                  ProcessRecord.executablePath(of: pid) == path else { return nil }
+            self.pid = pid
+            startSeconds = info.pbi_start_tvsec
+            startMicroseconds = info.pbi_start_tvusec
+        }
+
+        /// True while the original process is still running.
+        func isAlive(executablePath path: String) -> Bool {
+            ProcessRecord(pid: pid, executablePath: path) == self
+        }
+
+        static func executablePath(of pid: pid_t) -> String? {
+            var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+            guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+            return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        }
+    }
+
+    /// Processes of this user whose executable is `url`.
+    static func processes(runningExecutable url: URL) -> [ProcessRecord] {
         let target = url.resolvingSymlinksInPath().path
         let count = proc_listallpids(nil, 0)
         guard count > 0 else { return [] }
@@ -25,33 +55,23 @@ public struct DaemonProcess: Sendable {
             proc_listallpids($0.baseAddress, Int32($0.count * MemoryLayout<pid_t>.size))
         }
         guard filled > 0 else { return [] }
-        let uid = getuid()
-        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
-        return pids.prefix(Int(filled)).filter { pid in
-            guard pid > 0 else { return false }
-            var info = proc_bsdshortinfo()
-            let size = Int32(MemoryLayout<proc_bsdshortinfo>.size)
-            guard proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, size) == size, info.pbsi_uid == uid else {
-                return false
-            }
-            guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return false }
-            return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self) == target
-        }
+        return pids.prefix(Int(filled)).compactMap { ProcessRecord(pid: $0, executablePath: target) }
     }
 
-    public var daemonPids: [pid_t] {
+    private var daemonProcesses: [(ProcessRecord, String)] {
         guard let url = locator.daemonURL else { return [] }
-        return Self.pids(runningExecutable: url)
+        return Self.processes(runningExecutable: url).map { ($0, url.resolvingSymlinksInPath().path) }
     }
 
-    /// Every dbus-daemon from the KDE Connect bundle, including stale ones
-    /// left behind by earlier daemon runs.
-    public var busPids: [pid_t] {
-        guard let url = locator.bundleURL?.appendingPathComponent("Contents/MacOS/dbus-daemon") else { return [] }
-        return Self.pids(runningExecutable: url)
+    /// Every dbus-daemon from the KDE Connect bundle that this user runs,
+    /// including stale ones left behind by earlier runs. They all exist only
+    /// for KDE Connect, so a restart removes all of them.
+    private var busProcesses: [(ProcessRecord, String)] {
+        guard let url = locator.busURL else { return [] }
+        return Self.processes(runningExecutable: url).map { ($0, url.resolvingSymlinksInPath().path) }
     }
 
-    public var isDaemonRunning: Bool { !daemonPids.isEmpty }
+    public var isDaemonRunning: Bool { !daemonProcesses.isEmpty }
 
     /// Starts a private session bus with the bundled dbus-daemon, the same
     /// way the stock KDE Connect launcher does, and publishes its address in
@@ -68,13 +88,23 @@ public struct DaemonProcess: Sendable {
         try pipe.fileHandleForWriting.close()
         try log.close()
 
-        let reader = FirstLineReader(handle: pipe.fileHandleForReading)
-        guard let address = await reader.line(timeout: .seconds(5)), address.hasPrefix("unix:") else {
-            kill(pid, SIGTERM)
-            throw DaemonError.busDidNotStart
+        let record = ProcessRecord(pid: pid, executablePath: busURL.resolvingSymlinksInPath().path)
+        // Until the address is published, a failure must not leave the bus running.
+        do {
+            let fd = dup(pipe.fileHandleForReading.fileDescriptor)
+            try pipe.fileHandleForReading.close()
+            guard fd >= 0, let address = await readFirstLine(fd: fd, timeout: .seconds(5)),
+                  address.hasPrefix("unix:") else {
+                throw DaemonError.busDidNotStart
+            }
+            try (address + "\n").write(toFile: DaemonLocator.addressFile, atomically: true, encoding: .utf8)
+            return address
+        } catch {
+            if let record, record.isAlive(executablePath: busURL.resolvingSymlinksInPath().path) {
+                kill(record.pid, SIGTERM)
+            }
+            throw error
         }
-        try (address + "\n").write(toFile: DaemonLocator.addressFile, atomically: true, encoding: .utf8)
-        return address
     }
 
     /// Starts kdeconnectd on the bus at `busAddress`. Both outlive this app,
@@ -116,17 +146,20 @@ public struct DaemonProcess: Sendable {
     }
 
     /// Stops kdeconnectd and every bundled dbus-daemon, then waits up to
-    /// `timeout` for them to exit.
+    /// `timeout` for them to exit. Signals go only to the original processes,
+    /// never to a later process that reuses one of their PIDs.
     public func stopAll(timeout: Duration = .seconds(5)) async {
-        let targets = daemonPids + busPids
+        let targets = daemonProcesses + busProcesses
         guard !targets.isEmpty else { return }
-        for pid in targets { kill(pid, SIGTERM) }
+        for (record, _) in targets { kill(record.pid, SIGTERM) }
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
-            if targets.allSatisfy({ kill($0, 0) != 0 }) { return }
+            if !targets.contains(where: { $0.0.isAlive(executablePath: $0.1) }) { return }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        for pid in targets where kill(pid, 0) == 0 { kill(pid, SIGKILL) }
+        for (record, path) in targets where record.isAlive(executablePath: path) {
+            kill(record.pid, SIGKILL)
+        }
     }
 }
 
@@ -144,46 +177,33 @@ public enum DaemonError: Error, CustomStringConvertible {
     }
 }
 
-/// Collects the first line that a pipe receives.
-private final class FirstLineReader: @unchecked Sendable {
-    private let handle: FileHandle
-    private let lock = NSLock()
-    private var buffer = Data()
-    private var continuation: CheckedContinuation<String?, Never>?
-    private var result: String??
-
-    init(handle: FileHandle) {
-        self.handle = handle
-    }
-
-    func line(timeout: Duration) async -> String? {
-        await withCheckedContinuation { continuation in
-            lock.withLock { self.continuation = continuation }
-            handle.readabilityHandler = { [weak self] handle in
-                guard let self else { return }
-                let chunk = handle.availableData
-                if chunk.isEmpty { return self.finish(nil) }
-                let line: String? = self.lock.withLock {
-                    self.buffer.append(chunk)
-                    guard let newline = self.buffer.firstIndex(of: UInt8(ascii: "\n")) else { return nil }
-                    return String(decoding: self.buffer[..<newline], as: UTF8.self)
+/// Reads the first line from `fd` on a dedicated thread, then closes `fd`.
+/// One thread owns the descriptor, so the read and the close cannot race.
+private func readFirstLine(fd: Int32, timeout: Duration) async -> String? {
+    await withCheckedContinuation { continuation in
+        Thread.detachNewThread {
+            defer { close(fd) }
+            let deadline = ContinuousClock.now + timeout
+            var bytes: [UInt8] = []
+            var chunk = [UInt8](repeating: 0, count: 512)
+            while bytes.count < 4096 {
+                let remaining = deadline - ContinuousClock.now
+                guard remaining > .zero else { break }
+                var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                let ready = poll(&pfd, 1, Int32(remaining / .milliseconds(1)) + 1)
+                if ready < 0 && errno == EINTR { continue }
+                guard ready > 0 else { break }
+                let n = chunk.withUnsafeMutableBytes { read(fd, $0.baseAddress!, $0.count) }
+                if n < 0 && errno == EINTR { continue }
+                guard n > 0 else { break }
+                bytes += chunk[0..<n]
+                if let newline = bytes.firstIndex(of: UInt8(ascii: "\n")) {
+                    let line = String(decoding: bytes[..<newline], as: UTF8.self)
+                    continuation.resume(returning: line.trimmingCharacters(in: .whitespaces))
+                    return
                 }
-                if let line { self.finish(line.trimmingCharacters(in: .whitespaces)) }
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(timeout.components.seconds * 1000))) {
-                [weak self] in self?.finish(nil)
-            }
+            continuation.resume(returning: nil)
         }
-    }
-
-    private func finish(_ line: String?) {
-        let continuation: CheckedContinuation<String?, Never>? = lock.withLock {
-            defer { self.continuation = nil }
-            return self.continuation
-        }
-        guard let continuation else { return }
-        handle.readabilityHandler = nil
-        try? handle.close()
-        continuation.resume(returning: line)
     }
 }
