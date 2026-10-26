@@ -64,15 +64,7 @@ struct DeviceDetail: View {
         // toolbar, so the page moves them with the sidebar in one animation.
         .overlay(alignment: .top) {
             if device.isPaired {
-                // The large control size, so it matches the sidebar pill.
-                // The glass hugs the control (1 pt), so its own track and
-                // the glass read as one capsule, not one inside another.
                 PagePicker(selection: selection)
-                    .controlSize(.large)
-                    .focusEffectDisabled()
-                    .padding(.horizontal, 3)
-                    .padding(.vertical, 1)
-                    .glassEffect(.regular, in: .capsule)
                     .padding(.top, Self.tabsTopInset)
                     .ignoresSafeArea(edges: .top)
             }
@@ -426,14 +418,43 @@ private struct PageSlot<Content: View>: View {
     }
 }
 
+/// The device tabs as one glass capsule, built like the sidebar pill: the
+/// same height and padding, one edge, and a highlight that slides to the
+/// selected tab. A system tab control draws its own track, which shows as a
+/// second capsule inside the glass.
 private struct PagePicker: View {
     @Bindable var selection: PageSelection
+    @Namespace private var highlight
 
     var body: some View {
-        Picker("Page", selection: $selection.page) {
-            ForEach(DeviceDetail.Page.allCases) { Text($0.rawValue).tag($0) }
+        HStack(spacing: 0) {
+            ForEach(DeviceDetail.Page.allCases) { page in
+                let selected = selection.page == page
+                Button {
+                    withAnimation(.snappy(duration: 0.22)) { selection.page = page }
+                } label: {
+                    Text(page.rawValue)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(selected ? .primary : .secondary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 30)
+                        .background {
+                            if selected {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.1))
+                                    .padding(.vertical, 3)
+                                    .matchedGeometryEffect(id: "selected", in: highlight)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
         }
-        .pickerStyle(.tabs)
-        .labelsHidden()
+        .padding(.horizontal, 3)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Page")
     }
 }
