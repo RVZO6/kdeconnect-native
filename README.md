@@ -129,6 +129,20 @@ The workflow currently marks all tag releases as pre-releases. Change that
 policy before publishing a stable release. No signing secrets are needed for
 these alpha builds. Developer ID signing and notarization are not configured.
 
+## Code review
+
+CodeRabbit reviews new non-draft pull requests and updates its review when new
+commits are pushed. Repository-specific settings are in `.coderabbit.yaml`.
+Reviews focus on correctness, Swift concurrency, D-Bus, daemon lifecycle, and
+release packaging. Automatic approvals are disabled. Review context stays
+local to this repository; cross-repository and external issue-tracker context
+are disabled.
+
+To request another review, comment `@coderabbitai review` on a pull request.
+Use `@coderabbitai configuration` to inspect the resolved review settings.
+CodeRabbit does not review direct pushes to `master`; open a pull request when
+you want an automated review.
+
 ## Design
 
 | Module | Contents |

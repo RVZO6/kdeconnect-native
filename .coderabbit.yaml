@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+tone_instructions: >-
+  Use concise technical English. Report concrete defects with their impact and
+  a proposed correction. Avoid praise, repeated findings, and style-only comments.
+early_access: false
+enable_free_tier: true
+inheritance: false
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  sequence_diagrams: false
+  auto_approvals:
+    enabled: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_filters:
+    - '!Design/**'
+    - '!.build/**'
+    - '!build/**'
+  path_instructions:
+    - path: 'Sources/DBusKit/**/*.swift'
+      instructions: >-
+        Check D-Bus framing, alignment, signatures, byte order, authentication,
+        malformed-input handling, size limits, socket lifetimes, and concurrent
+        request cancellation. Require regression tests for protocol changes.
+    - path: 'Sources/KDEConnectKit/**/*.swift'
+      instructions: >-
+        Check Swift 6 isolation and Sendable safety, reconnect and restart races,
+        PID reuse, bounded retries, file descriptor cleanup, and process ownership.
+        Preserve upstream pairing, plugins, settings, and privacy permissions.
+        Never stop unrelated processes or expose device data in public logs.
+    - path: 'Sources/KDEConnectNative/**/*.swift'
+      instructions: >-
+        Check main-actor isolation, SwiftUI state ownership, task cancellation,
+        accessibility, and UI behavior when devices disconnect. This app targets
+        macOS 27; do not report valid macOS 27 APIs as unavailable without evidence.
+    - path: 'Scripts/**'
+      instructions: >-
+        Check Bash 3.2 compatibility, quoting, failure propagation, cleanup, and
+        safe paths. Verify pinned download checksums, cache-hit verification,
+        relocated helper paths, preserved upstream signatures and licenses, and
+        release version consistency. KDE Connect uses pre-built official binaries;
+        do not require building KDE or Qt from source.
+    - path: '.github/workflows/**'
+      instructions: >-
+        Check least-privilege token permissions, untrusted PR input, action pins,
+        artifact integrity, tag validation, and release gating on successful tests
+        and packaging. The xcode-27 hosted arm64 runner is intentional.
+
+# Keep this public project's review context separate from other repositories.
+knowledge_base:
+  automatic_linking_mode: disabled
+  linked_repositories: []
+  learnings:
+    scope: local
+  issues:
+    scope: local
+  pull_requests:
+    scope: local
+  jira:
+    usage: disabled
+  linear:
+    usage: disabled
+  mcp:
+    usage: disabled
