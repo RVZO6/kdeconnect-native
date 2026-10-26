@@ -1,4 +1,17 @@
-# KDE Connect Native
+# KDE Connect UI
+
+<img src="Design/icon-finals/v25b3-final-a2-default.png" alt="App icon" width="160" />
+
+A simple SwiftUI app that provides a native UI for the `kdeconnectd` daemon.
+
+I built this because other alternatives (like [KonnectMac](https://github.com/aryarajsingh/KonnectMac)), while impressive as a rewrite, are not feature complete, and I DO NOT have the tokens to finish that. So I opted for this approach instead.
+
+It may be buggy — I vibe coded this in a few hours — and I may not maintain this.
+
+CLANKER TEXT STARTS HERE
+VVVV
+
+---
 
 A native SwiftUI app for KDE Connect on macOS. It replaces the Qt window
 (`kdeconnect-app`) and the Qt menu bar indicator, but keeps the official
