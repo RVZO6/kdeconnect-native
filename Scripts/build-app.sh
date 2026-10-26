@@ -28,9 +28,15 @@ echo "Built $app"
 if [[ "${1:-}" == "--install" ]]; then
     dest="$HOME/Applications/KDE Connect Native.app"
     pkill -x KDEConnectNative || true
+    # Opening the app while the old instance still quits fails with error -600.
+    for _ in {1..50}; do pgrep -x KDEConnectNative >/dev/null || break; sleep 0.1; done
     mkdir -p "$HOME/Applications"
     rm -rf "$dest"
     cp -R "$app" "$dest"
-    open "$dest"
+    # LaunchServices can still refuse right after a replace (-600); try again.
+    for attempt in 1 2 3; do
+        open "$dest" 2>/dev/null && break
+        sleep 1
+    done
     echo "Installed $dest"
 fi
