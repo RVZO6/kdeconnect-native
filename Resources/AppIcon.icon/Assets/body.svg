@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Phone body, same proportions as the stock KDE Connect icon, with a dark speaker slot. -->
+  <path fill="#2A2C2F" d="M 382 150 H 642 A 80 80 0 0 1 722 230 V 794 A 80 80 0 0 1 642 874 H 382 A 80 80 0 0 1 302 794 V 230 A 80 80 0 0 1 382 150 Z"/>
+  <rect x="452" y="188" width="120" height="28" rx="14" fill="#141516"/>
+</svg>
