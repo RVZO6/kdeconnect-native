@@ -97,9 +97,8 @@ public struct LinkProvider: Identifiable, Equatable, Sendable {
 }
 
 extension Plugin {
-    /// Readable names for plugin IDs, as the stock settings show them.
-    public static func displayName(for id: String) -> String {
-        let names: [String: String] = [
+    /// Build this immutable table once, not for every label or sort comparison.
+    private static let displayNames: [String: String] = [
             "kdeconnect_battery": "Battery monitor",
             "kdeconnect_bigscreen": "Bigscreen",
             "kdeconnect_clipboard": "Clipboard sync",
@@ -127,8 +126,11 @@ extension Plugin {
             "kdeconnect_systemvolume": "System volume",
             "kdeconnect_telephony": "Telephony integration",
             "kdeconnect_virtualmonitor": "Virtual monitor",
-        ]
-        if let name = names[id] { return name }
+    ]
+
+    /// Readable names for plugin IDs, as the stock settings show them.
+    public static func displayName(for id: String) -> String {
+        if let name = displayNames[id] { return name }
         let bare = id.hasPrefix("kdeconnect_") ? String(id.dropFirst("kdeconnect_".count)) : id
         return bare.replacingOccurrences(of: "_", with: " ").capitalized
     }

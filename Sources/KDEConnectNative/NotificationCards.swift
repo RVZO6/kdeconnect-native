@@ -34,6 +34,7 @@ struct NotificationCards: View, Equatable {
     }
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("NotificationCards")
         let groups = groups
         LazyVStack(alignment: .leading, spacing: 18) {
             if groups.isEmpty {
@@ -98,6 +99,7 @@ private struct NotificationGroup: View {
     private static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("NotificationGroup")
         VStack(alignment: .leading, spacing: 8) {
             header
             StackLayout(stacked: isStacked) {
@@ -248,6 +250,7 @@ private struct NotificationCard: View {
     @State private var hovering = false
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("NotificationCard")
         VStack(alignment: .leading, spacing: 6) {
             // Keep the card, its identity, and its reply state in the layout,
             // but do not build text fields or glass buttons behind a stack.

@@ -11,6 +11,7 @@ struct HorizontalSwipeCatcher: NSViewRepresentable {
     func makeNSView(context: Context) -> CatcherView { CatcherView() }
 
     func updateNSView(_ view: CatcherView, context: Context) {
+        UIBenchmark.recordUpdate("SwipeCatcher.updateNSView")
         view.active = active
         view.onChange = onChange
         view.onEnd = onEnd

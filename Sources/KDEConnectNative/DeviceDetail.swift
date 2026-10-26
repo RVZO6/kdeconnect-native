@@ -22,6 +22,7 @@ struct DeviceDetail: View {
     @State private var overviewScroll = ScrollPosition()
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("DeviceDetail")
         Group {
             if device.isPaired && page == .overview {
                 // Cards, not form rows, so that a card can be swiped off.

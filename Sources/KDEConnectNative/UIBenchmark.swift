@@ -7,6 +7,13 @@ import Foundation
 /// performed in a timed section.
 @MainActor
 enum UIBenchmark {
+    private static let recordsUpdates = CommandLine.arguments.contains("--ui-benchmark")
+    private static var updates: [String: Int] = [:]
+
+    static func recordUpdate(_ name: String) {
+        guard recordsUpdates else { return }
+        updates[name, default: 0] += 1
+    }
 
     struct Measurement: Encodable {
         let scenario: String
@@ -17,6 +24,8 @@ enum UIBenchmark {
         let scrollDistancePoints: Double
         let documentHeightPoints: Double
         let scrollViewAttached: Bool
+        let scrollableRangePoints: Double
+        let bodyUpdateCounts: [String: Int]
         let wallMilliseconds: Double
         let cpuMilliseconds: Double
         let inputIntervalP50Milliseconds: Double
@@ -38,6 +47,7 @@ enum UIBenchmark {
             return
         }
         window.setContentSize(NSSize(width: 900, height: 640))
+        window.acceptsMouseMovedEvents = true
         try? await Task.sleep(for: .seconds(1))
         let scrollViews = descendants(of: window.contentView).compactMap { $0 as? NSScrollView }
         guard let scrollView = scrollViews.max(by: {
@@ -64,6 +74,8 @@ enum UIBenchmark {
             let views = descendants(of: window.contentView)
             let swipeViews = views.filter { $0 is HorizontalSwipeCatcher.CatcherView }.count
             let monitors = HorizontalSwipeCatcher.CatcherView.monitorCount
+            let scrollableRange = max(0, (scrollView.documentView?.bounds.height ?? 0) - scrollView.contentView.bounds.height)
+            updates = [:]
             var intervals: [Double] = []
             var previous = ContinuousClock.now
             let start = previous
@@ -71,9 +83,17 @@ enum UIBenchmark {
             var previousY = scrollView.contentView.bounds.minY
             var distance: CGFloat = 0
             let eventCount = 240
+            var direction: Int32 = -1
             for index in 0..<eventCount {
-                postScroll(in: scrollView, window: window, deltaY: index < eventCount / 2 ? -14 : 14,
+                // Reverse before an edge instead of spending most of a
+                // short-list workload pressing against the scroll limit.
+                let maxY = max(0, (scrollView.documentView?.bounds.height ?? 0) - scrollView.contentView.bounds.height)
+                let currentY = scrollView.contentView.bounds.minY
+                if direction < 0, currentY >= maxY - 14 { direction = 1 }
+                else if direction > 0, currentY <= 14 { direction = -1 }
+                postScroll(in: scrollView, window: window, deltaY: direction * 14,
                            phase: index == 0 ? 1 : 2)
+                postHover(in: scrollView, window: window)
                 try? await Task.sleep(for: .milliseconds(8))
                 let now = ContinuousClock.now
                 intervals.append(milliseconds(previous.duration(to: now)))
@@ -94,6 +114,7 @@ enum UIBenchmark {
                 scrollDistancePoints: Double(distance),
                 documentHeightPoints: Double(scrollView.documentView?.bounds.height ?? 0),
                 scrollViewAttached: scrollView.window === window,
+                scrollableRangePoints: Double(scrollableRange), bodyUpdateCounts: updates,
                 wallMilliseconds: wall, cpuMilliseconds: cpu,
                 inputIntervalP50Milliseconds: intervals[intervals.count / 2],
                 inputIntervalP95Milliseconds: intervals[Int(Double(intervals.count - 1) * 0.95)],
@@ -126,6 +147,18 @@ enum UIBenchmark {
         // This keeps the scroll distance independent of focus and the pointer.
         if let event = NSEvent(cgEvent: cg), let scrollView = view as? NSScrollView {
             scrollView.scrollWheel(with: event)
+        }
+    }
+
+    private static func postHover(in view: NSView, window: NSWindow) {
+        // Keep a synthetic pointer over the content without moving the
+        // user's actual cursor. This exercises reply-on-hover while scrolling.
+        let point = view.convert(NSPoint(x: min(80, view.bounds.width / 2), y: view.bounds.midY), to: nil)
+        if let event = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [],
+                                         timestamp: ProcessInfo.processInfo.systemUptime,
+                                         windowNumber: window.windowNumber, context: nil,
+                                         eventNumber: 0, clickCount: 0, pressure: 0) {
+            NSApp.postEvent(event, atStart: false)
         }
     }
 

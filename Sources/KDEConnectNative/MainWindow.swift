@@ -8,6 +8,7 @@ struct MainWindow: View {
     @Environment(KDEConnectStore.self) private var store
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("MainWindow")
         @Bindable var store = store
         NavigationSplitView {
             Sidebar(selection: $store.selectedDeviceId)
@@ -62,6 +63,7 @@ private struct Sidebar: View {
     @State private var unpairCandidate: Device?
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("Sidebar")
         let groups = deviceGroups
         List(selection: $selection) {
             ForEach(groups, id: \.title) { group in
@@ -160,6 +162,7 @@ private struct DeviceRow: View {
     let device: Device
 
     var body: some View {
+        let _ = UIBenchmark.recordUpdate("DeviceRow")
         Label {
             VStack(alignment: .leading, spacing: 1) {
                 Text(device.name).lineLimit(1)
