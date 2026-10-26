@@ -1,5 +1,6 @@
 import AppKit
 import KDEConnectKit
+import Observation
 import SwiftUI
 
 /// Phone notifications as separate cards. Swipe a card off to either side
@@ -247,7 +248,7 @@ private struct NotificationCard: View {
     let onDismissed: () -> Void
     @State private var replying = false
     @State private var reply = ""
-    @State private var hovering = false
+    @State private var hover = NotificationHoverState()
 
     var body: some View {
         let _ = UIBenchmark.recordUpdate("NotificationCard")
@@ -269,12 +270,7 @@ private struct NotificationCard: View {
                     }
                     Spacer(minLength: 8)
                     if canReply {
-                        Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
-                            .labelStyle(.iconOnly)
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                            .opacity(hovering || replying ? 1 : 0)
-                            .help("Reply")
+                        NotificationReplyButton(hover: hover, replying: $replying)
                     }
                 }
                 if replying {
@@ -296,8 +292,7 @@ private struct NotificationCard: View {
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
         // A faint edge, so that stacked cards read as separate layers.
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.06)))
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hover.isHovering = $0 }
         .modifier(StackSwipe(enabled: swipeEnabled && notification.dismissable, onSwipe: dismiss))
         .contextMenu {
             if canReply {
@@ -323,6 +318,30 @@ private struct NotificationCard: View {
         store.perform("Reply") { try await $0.replyToNotification(deviceId: d, replyId: r, message: m) }
         reply = ""
         replying = false
+    }
+}
+
+/// Only the reply button observes hover changes. The text, card layout,
+/// context menu and native swipe catcher do not need to rebuild for them.
+@MainActor
+@Observable
+private final class NotificationHoverState {
+    var isHovering = false
+}
+
+private struct NotificationReplyButton: View {
+    let hover: NotificationHoverState
+    @Binding var replying: Bool
+
+    var body: some View {
+        let _ = UIBenchmark.recordUpdate("NotificationReplyButton")
+        Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .opacity(hover.isHovering || replying ? 1 : 0)
+            .help("Reply")
+            .animation(.easeOut(duration: 0.12), value: hover.isHovering)
     }
 }
 

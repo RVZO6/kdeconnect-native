@@ -12,10 +12,11 @@ struct HorizontalSwipeTests {
     }
 
     private func event(dx: Int32 = 0, dy: Int32 = 0, phase: Int64,
-                       momentum: Int64 = 0, precise: Bool = true) throws -> NSEvent {
+                       momentum: Int64 = 0, precise: Bool = true,
+                       screenPoint: NSPoint = NSPoint(x: 50, y: 50)) throws -> NSEvent {
         let cg = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
                                      wheel1: dy, wheel2: dx, wheel3: 0))
-        cg.location = CGPoint(x: 50, y: (NSScreen.screens.first?.frame.maxY ?? 0) - 50)
+        cg.location = CGPoint(x: screenPoint.x, y: (NSScreen.screens.first?.frame.maxY ?? 0) - screenPoint.y)
         cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: precise ? 1 : 0)
         cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
         cg.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
@@ -138,4 +139,40 @@ struct HorizontalSwipeTests {
         let wheel = try event(dx: 10, phase: 1, precise: false)
         #expect(HorizontalSwipeRouter.shared.route(wheel) === wheel)
     }
+
+    @Test func swipeStartsOnlyInsideTheInsetScrollViewport() throws {
+        let window = window()
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsets(top: 40, left: 20, bottom: 0, right: 0)
+        let document = FlippedDocument(frame: NSRect(x: 0, y: 0, width: 300, height: 600))
+        scroll.documentView = document
+        window.contentView?.addSubview(scroll)
+        let view = HorizontalSwipeCatcher.CatcherView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
+        document.addSubview(view)
+        defer { view.removeFromSuperview(); scroll.removeFromSuperview() }
+        scroll.contentView.scroll(to: .zero)
+        HorizontalSwipeCatcher.CatcherView.acceptsWindowlessEvents = true
+        defer { HorizontalSwipeCatcher.CatcherView.acceptsWindowlessEvents = false }
+
+        func eventAt(x: CGFloat, y: CGFloat) throws -> NSEvent {
+            let pointInWindow = scroll.contentView.convert(NSPoint(x: x, y: y), to: nil)
+            let pointOnScreen = window.convertPoint(toScreen: pointInWindow)
+            return try event(dx: 8, phase: 1, screenPoint: pointOnScreen)
+        }
+        let header = try eventAt(x: 50, y: 20)
+        let sidebar = try eventAt(x: 10, y: 60)
+        let content = try eventAt(x: 50, y: 60)
+        #expect(!view.accepts(header))
+        #expect(!view.accepts(sidebar))
+        #expect(view.accepts(content))
+        #expect(HorizontalSwipeRouter.shared.route(header) === header)
+        #expect(HorizontalSwipeRouter.shared.route(sidebar) === sidebar)
+        #expect(HorizontalSwipeRouter.shared.route(content) == nil)
+    }
+}
+
+@MainActor
+private final class FlippedDocument: NSView {
+    override var isFlipped: Bool { true }
 }

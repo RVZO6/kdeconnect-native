@@ -73,7 +73,12 @@ struct HorizontalSwipeCatcher: NSViewRepresentable {
                 ? window.convertPoint(fromScreen: event.locationInWindow)
                 : event.locationInWindow
             let point = convert(location, from: nil)
-            return bounds.contains(point) && visibleRect.contains(point)
+            guard bounds.contains(point), visibleRect.contains(point) else { return false }
+            if let scroll = enclosingScrollView {
+                let clipPoint = scroll.contentView.convert(location, from: nil)
+                guard ScrollViewport.visibleRect(of: scroll).contains(clipPoint) else { return false }
+            }
+            return true
         }
 
         func resetTracking() { tracking = .idle }

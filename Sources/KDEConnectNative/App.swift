@@ -141,7 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return max(0, min(value, 5_000))
             }
             store.showDemo(notificationCount: count(after: "--demo-notifications"),
-                           appCount: count(after: "--demo-apps") ?? 20)
+                           appCount: count(after: "--demo-apps") ?? 20,
+                           replyEvery: count(after: "--demo-reply-every") ?? 1)
         } else {
             store.start()
         }
