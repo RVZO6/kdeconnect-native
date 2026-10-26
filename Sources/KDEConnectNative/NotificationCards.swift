@@ -10,27 +10,68 @@ struct NotificationCards: View {
     /// Cards that flew off. They stay hidden until the phone confirms.
     @State private var dismissed: Set<String> = []
 
-    var body: some View {
+    /// Notifications grouped by app. The app with the newest notification
+    /// comes first; inside a group, the newest is on top.
+    private var groups: [(app: String, items: [PhoneNotification])] {
         let visible = device.notifications.filter { !dismissed.contains($0.id) }
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Notifications")
-                .font(.headline)
-                .padding(.horizontal, 11)
-            if visible.isEmpty {
+        var order: [String] = []
+        var byApp: [String: [PhoneNotification]] = [:]
+        // device.notifications is already newest first.
+        for item in visible {
+            let app = item.appName.isEmpty ? "Other" : item.appName
+            if byApp[app] == nil { order.append(app) }
+            byApp[app, default: []].append(item)
+        }
+        return order.map { ($0, byApp[$0]!) }
+    }
+
+    var body: some View {
+        let groups = groups
+        VStack(alignment: .leading, spacing: 18) {
+            if groups.isEmpty {
                 Text(device.isReachable ? "No notifications." : "Notifications show when the device is connected.")
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 6)
             }
-            ForEach(visible) { notification in
-                NotificationCard(deviceId: device.id, notification: notification) {
-                    withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(notification.id) }
+            ForEach(groups, id: \.app) { group in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(group.app).font(.headline)
+                        Text("\(group.items.count)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if group.items.contains(where: \.dismissable) {
+                            Button("Clear") { clear(group.items) }
+                                .buttonStyle(.glass)
+                                .controlSize(.small)
+                                .help("Dismiss all \(group.app) notifications on the device")
+                        }
+                    }
+                    .padding(.horizontal, 11)
+                    ForEach(group.items) { notification in
+                        NotificationCard(deviceId: device.id, notification: notification,
+                                         showsAppName: false) {
+                            withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(notification.id) }
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    }
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
         .onChange(of: device.notifications.map(\.id)) { _, ids in
             dismissed.formIntersection(ids)
+        }
+    }
+
+    private func clear(_ items: [PhoneNotification]) {
+        let targets = items.filter(\.dismissable)
+        withAnimation(.snappy(duration: 0.25)) { dismissed.formUnion(targets.map(\.id)) }
+        let deviceId = device.id
+        let ids = targets.map(\.id)
+        store.perform("Clear notifications") { client in
+            for id in ids { try await client.dismissNotification(deviceId: deviceId, notificationId: id) }
         }
     }
 }
@@ -39,6 +80,8 @@ private struct NotificationCard: View {
     @Environment(KDEConnectStore.self) private var store
     let deviceId: String
     let notification: PhoneNotification
+    /// False inside an app group, whose header already names the app.
+    var showsAppName = true
     let onDismissed: () -> Void
     @State private var replying = false
     @State private var reply = ""
@@ -48,7 +91,9 @@ private struct NotificationCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    if showsAppName {
+                        Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
                     if !notification.title.isEmpty {
                         Text(notification.title).fontWeight(.medium)
                     }

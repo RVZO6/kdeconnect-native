@@ -128,6 +128,14 @@ private struct AddDeviceRow: View {
             } icon: {
                 Image(systemName: "plus").imageScale(.small)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 9)
+            // A line that sets the add row apart from the devices above it.
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 1)
+            }
             // Grey, like the text; the normal text colour on hover. Fixed
             // label colours, because the sidebar tints list icons and
             // hierarchical styles with the accent colour.
