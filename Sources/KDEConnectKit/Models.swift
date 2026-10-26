@@ -57,6 +57,10 @@ public struct PhoneNotification: Identifiable, Equatable, Sendable {
     public var text: String
     public var dismissable: Bool
     public var replyId: String
+    /// The icon that the phone sent, as a PNG that kdeconnectd saved.
+    /// Usually the app's status bar icon; sometimes a large icon, such as
+    /// a contact photo.
+    public var iconPath: String?
 
     init(id: String, properties p: [String: DBusValue]) {
         self.id = id
@@ -65,6 +69,8 @@ public struct PhoneNotification: Identifiable, Equatable, Sendable {
         text = p["text"]?.stringValue ?? ""
         dismissable = p["dismissable"]?.boolValue ?? false
         replyId = p["replyId"]?.stringValue ?? ""
+        let path = p["iconPath"]?.stringValue ?? ""
+        iconPath = p["hasIcon"]?.boolValue == true && !path.isEmpty ? path : nil
     }
 }
 

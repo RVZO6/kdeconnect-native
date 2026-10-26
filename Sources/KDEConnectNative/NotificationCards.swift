@@ -145,14 +145,28 @@ private struct NotificationGroup: View {
     }
 
     /// The app's first letter on a tile in the app's own colour.
+    /// The phone's icon for the app on a neutral tile, or the first letter
+    /// of the app name when the phone sent no icon. The phone does not send
+    /// an app colour, so the tile has none.
     private var appTile: some View {
         RoundedRectangle(cornerRadius: 5, style: .continuous)
-            .fill(appTint(for: app).gradient)
+            .fill(.quaternary)
             .frame(width: 20, height: 20)
             .overlay {
-                Text(app.prefix(1).uppercased())
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                if let path = items.first?.iconPath, let icon = NotificationIconCache.icon(at: path) {
+                    if icon.isTemplate {
+                        Image(nsImage: icon.image).renderingMode(.template).resizable().interpolation(.high)
+                            .foregroundStyle(.primary)
+                            .padding(3)
+                    } else {
+                        Image(nsImage: icon.image).resizable().interpolation(.high)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                } else {
+                    Text(app.prefix(1).uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
             .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             .accessibilityHidden(true)
@@ -451,5 +465,43 @@ private struct SwipeToDismiss: ViewModifier {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
         }
         armed = false
+    }
+}
+
+/// Icons that the phone sent, loaded once per file. Android status bar
+/// icons are alpha masks in one colour; they show as a template in the
+/// text colour. Icons with more colours, such as photos, show as they are.
+@MainActor
+private enum NotificationIconCache {
+    struct Icon { let image: NSImage; let isTemplate: Bool }
+    private static var icons: [String: Icon] = [:]
+
+    static func icon(at path: String) -> Icon? {
+        if let icon = icons[path] { return icon }
+        guard let image = NSImage(contentsOfFile: path),
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let icon = Icon(image: image, isTemplate: isSingleColour(cg))
+        icons[path] = icon
+        return icon
+    }
+
+    /// True when all visible pixels have nearly the same colour.
+    private static func isSingleColour(_ cg: CGImage) -> Bool {
+        let w = cg.width, h = cg.height
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var first: (Int, Int, Int)?
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            let a = Int(pixels[i + 3])
+            guard a > 128 else { continue }
+            // Undo the premultiplication to compare the real colours.
+            let c = (Int(pixels[i]) * 255 / a, Int(pixels[i + 1]) * 255 / a, Int(pixels[i + 2]) * 255 / a)
+            guard let f = first else { first = c; continue }
+            if abs(c.0 - f.0) + abs(c.1 - f.1) + abs(c.2 - f.2) > 48 { return false }
+        }
+        return true
     }
 }

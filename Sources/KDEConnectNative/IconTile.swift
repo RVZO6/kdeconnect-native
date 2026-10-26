@@ -68,19 +68,3 @@ extension Plugin {
         }
     }
 }
-
-/// A stable colour for an app name, so that each app's notifications keep
-/// their colour between launches.
-func appTint(for name: String) -> Color {
-    // Colours that people know for common apps; others get a stable hash colour.
-    let known: [String: Color] = [
-        "messages": .green, "whatsapp": .green, "signal": .blue, "telegram": .cyan, "discord": .indigo,
-        "slack": .purple, "gmail": .red, "mail": .blue, "outlook": .blue, "calendar": .red,
-        "phone": .green, "spotify": .green, "youtube": .red, "instagram": .pink, "maps": .teal,
-        "clock": .orange, "photos": .orange, "settings": .gray, "kde connect": .blue,
-    ]
-    if let color = known[name.lowercased()] { return color }
-    let palette: [Color] = [.blue, .green, .orange, .pink, .purple, .teal, .indigo, .red, .cyan, .brown]
-    let sum = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0x7fff_ffff }
-    return palette[sum % palette.count]
-}
