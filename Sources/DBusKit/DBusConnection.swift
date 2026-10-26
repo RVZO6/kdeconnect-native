@@ -29,6 +29,12 @@ public final class DBusConnection: @unchecked Sendable {
         return connection
     }
 
+    // The initializer is complete once `fd` is set, so deinit also runs
+    // when a later step of init throws. It is the only place that closes fd.
+    deinit {
+        if fd >= 0 { Darwin.close(fd) }
+    }
+
     private init(address: String, socketPath: String) throws {
         self.address = address
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -40,7 +46,6 @@ public final class DBusConnection: @unchecked Sendable {
         addr.sun_family = sa_family_t(AF_UNIX)
         let pathBytes = Array(socketPath.utf8)
         guard pathBytes.count < MemoryLayout.size(ofValue: addr.sun_path) else {
-            Darwin.close(fd)
             throw DBusError.invalidAddress(address)
         }
         withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
@@ -54,19 +59,13 @@ public final class DBusConnection: @unchecked Sendable {
         }
         guard result == 0 else {
             let message = String(cString: strerror(errno))
-            Darwin.close(fd)
             throw DBusError.connectionFailed("\(socketPath): \(message)")
         }
         // Calls block in the socket only during authentication; the reader
         // thread uses blocking reads after that.
         var timeout = timeval(tv_sec: 5, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
-        do {
-            try authenticate()
-        } catch {
-            Darwin.close(fd)
-            throw error
-        }
+        try authenticate()
         timeout = timeval(tv_sec: 0, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
     }
@@ -126,11 +125,12 @@ public final class DBusConnection: @unchecked Sendable {
     }
 
     private func startReader() {
-        // The thread keeps the connection alive until the socket closes.
+        // The thread keeps the connection alive until the socket closes. The
+        // descriptor itself closes only in deinit, so that no other thread
+        // can use a descriptor number that the system has given out again.
         let thread = Thread {
             while self.readOne() {}
             self.close()
-            Darwin.close(self.fd)
         }
         thread.name = "DBusConnection reader"
         thread.start()
@@ -278,7 +278,7 @@ public final class DBusConnection: @unchecked Sendable {
             closeHandler = nil
             return (c, h)
         }
-        // Shutdown wakes the reader thread, which then closes the descriptor.
+        // Shutdown wakes the reader thread and makes later writes fail.
         shutdown(fd, SHUT_RDWR)
         for c in continuations { c.resume(throwing: DBusError.disconnected) }
         handler?()

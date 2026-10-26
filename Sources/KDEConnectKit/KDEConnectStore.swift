@@ -109,6 +109,8 @@ public final class KDEConnectStore {
             case .unreachable: break
             }
         }
+        // A restart may have begun while this step waited.
+        guard !isRestarting else { return }
         status = .daemonStopped
         devices = []
         guard autoStartDaemon else { return }
