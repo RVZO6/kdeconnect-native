@@ -16,7 +16,10 @@ struct MainWindow: View {
             if store.status != .connected {
                 ServiceUnavailableView()
             } else if let device = store.selectedDevice {
+                // A new identity per device, so that view state such as a
+                // reply draft never moves to another device.
                 DeviceDetail(device: device)
+                    .id(device.id)
             } else {
                 NoDeviceSelectedView()
             }
@@ -34,9 +37,13 @@ struct MainWindow: View {
         } message: {
             Text(store.lastError ?? "")
         }
-        .onAppear { NSApp.setActivationPolicy(.regular) }
+        .onAppear {
+            WindowOpener.shared.isMainWindowVisible = true
+            NSApp.setActivationPolicy(.regular)
+        }
         .onDisappear {
             // Without a window, the app lives only in the menu bar again.
+            WindowOpener.shared.isMainWindowVisible = false
             NSApp.setActivationPolicy(.accessory)
         }
     }

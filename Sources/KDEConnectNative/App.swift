@@ -46,6 +46,17 @@ struct StatusIcon: View {
     var body: some View {
         Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
             .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onChange(of: store.lastError) { _, error in
+                // The main window shows errors itself. Without it, actions
+                // from the menu or Settings must not fail silently.
+                guard let error, !WindowOpener.shared.isMainWindowVisible else { return }
+                let alert = NSAlert()
+                alert.messageText = "KDE Connect"
+                alert.informativeText = error
+                NSApp.activate()
+                alert.runModal()
+                store.clearError()
+            }
     }
 }
 
@@ -54,6 +65,7 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
+    var isMainWindowVisible = false
 
     func showMainWindow() {
         // An accessory app must become a regular app to own a key window
