@@ -331,7 +331,7 @@ public final class KDEConnectStore {
     /// Runs a daemon call and shows its error to the user.
     public func perform(_ action: String, _ body: @escaping @Sendable (KDEConnectClient) async throws -> Void) {
         guard let client else {
-            lastError = "\(action) failed: KDE Connect is not running"
+            if !isDemo { lastError = "\(action) failed: KDE Connect is not running" }
             return
         }
         Task {
@@ -346,6 +346,46 @@ public final class KDEConnectStore {
     }
 
     public func clearError() { lastError = nil }
+
+    /// True in demo mode, where daemon calls do nothing.
+    @ObservationIgnored private var isDemo = false
+
+    /// Debug aid: fills the store with a sample connected phone, without a
+    /// daemon, so that the UI can be checked. Do not call `start()` as well.
+    public func showDemo() {
+        isDemo = true
+        status = .connected
+        announcedName = "This Mac"
+        var phone = Device(id: "demo_phone", properties: [
+            "name": .string("Sample Phone"), "type": .string("phone"), "isReachable": .bool(true),
+            "isPaired": .bool(true), "verificationKey": .string("A1B2C3D4"),
+            "activeProviderNames": .stringArray(["LAN"]), "reachableAddresses": .stringArray(["192.168.1.20"]),
+            "supportedPlugins": .stringArray([Plugin.battery.rawValue, Plugin.clipboard.rawValue,
+                                              Plugin.findMyPhone.rawValue, Plugin.ping.rawValue,
+                                              Plugin.share.rawValue, Plugin.notifications.rawValue]),
+        ])
+        phone.loadedPlugins = Set(phone.supportedPlugins)
+        phone.battery = .init(charge: 64, isCharging: false)
+        phone.cellular = .init(networkType: "5G", strength: 3)
+        phone.notifications = [
+            PhoneNotification(id: "2", properties: ["appName": .string("Messages"), "title": .string("Alex"),
+                                                    "text": .string("Are we still on for 6?"), "dismissable": .bool(true),
+                                                    "replyId": .string("r2")]),
+            PhoneNotification(id: "1", properties: ["appName": .string("Calendar"), "title": .string("Stand-up"),
+                                                    "text": .string("In 10 minutes"), "dismissable": .bool(true)]),
+        ] + (3...9).map { n in
+            PhoneNotification(id: String(n), properties: [
+                "appName": .string("Mail"), "title": .string("Message \(n)"),
+                "text": .string("A sample notification, so that the page can scroll."), "dismissable": .bool(true),
+            ])
+        }
+        let laptop = Device(id: "demo_laptop", properties: [
+            "name": .string("Sample Laptop"), "type": .string("laptop"), "isPaired": .bool(true),
+        ])
+        devices = [phone, laptop]
+        pluginStates[phone.id] = Dictionary(uniqueKeysWithValues: phone.supportedPlugins.map { ($0, true) })
+        selectedDeviceId = phone.id
+    }
     public func reportError(_ message: String) { lastError = message }
 
     public var selectedDevice: Device? { devices.first { $0.id == selectedDeviceId } }

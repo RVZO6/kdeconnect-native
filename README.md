@@ -25,10 +25,12 @@ and restarts the daemon when it is missing or on a dead bus.
 - **Main window** (replaces `kdeconnect-app`): devices in a sidebar
   (connected, remembered, available, pairing requests), with "Pair New
   Device…" as the last row and swipe actions (Ring, Unpair). The device
-  page has a header with status, battery and a refresh button, then tabs:
-  Overview (glass action buttons: Ring, Ping, Send clipboard, Send files,
-  Messages; notifications with dismiss and reply), Plugins (switches and
-  settings) and Details. Drop files on the window to send them.
+  page has a header with status, battery, a refresh button and the actions
+  (glass buttons: Ring, Ping, Send clipboard, Send files, Messages), then
+  tabs: Overview (notification cards: swipe a card off to either side with
+  two fingers to dismiss it; reply on hover or from the context menu),
+  Plugins (switches and settings) and Details. Drop files on the window to
+  send them.
 - **Plugin settings**: the gear next to a plugin opens its settings, the
   same set as the stock app: clipboard (auto share, passwords, file size),
   share (download folder), run commands (commands that devices can run on
@@ -82,4 +84,7 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 - Daemon output: `~/Library/Logs/KDEConnectNative/kdeconnectd.log`
 - Print the sidebar position while it toggles (one toggle, then a fast burst): `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --sidebar-test`
 - Save an image of the real window, title bar included: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --window-snapshot /tmp/window.png`
+- Fill the window with a sample connected phone, without the daemon: add `--demo` (for example with `--window-snapshot`, which also saves a capture with the page scrolled)
+- Post a synthetic two-finger swipe each way over the first notification and save captures: `--demo --swipe-test /tmp/swipe`
+- Expand and collapse the notification stacks and save frames during the animation: `--demo --stack-test /tmp/stack`
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`

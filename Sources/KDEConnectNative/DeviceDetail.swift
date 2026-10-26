@@ -18,38 +18,56 @@ struct DeviceDetail: View {
     @State private var dropTargeted = false
     @State private var settingsPlugin: PluginSheetItem?
 
+    @Environment(\.displayScale) private var displayScale
+    @State private var overviewScroll = ScrollPosition()
+
     var body: some View {
-        Form {
-            if !device.isPaired {
-                pairingSection
-                detailsSection
+        Group {
+            if device.isPaired && page == .overview {
+                // Cards, not form rows, so that a card can be swiped off.
+                ScrollView {
+                    NotificationCards(device: device)
+                        .frame(maxWidth: 704)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollPosition($overviewScroll)
+                .onReceive(NotificationCenter.default.publisher(for: .debugScrollPage)) { _ in
+                    overviewScroll.scrollTo(y: 160)
+                }
             } else {
-                switch page {
-                case .overview:
-                    if device.isReachable { actionsSection }
-                    notificationsSection
-                case .plugins:
-                    pluginsSection
-                case .details:
-                    detailsSection
-                    Section {
-                        Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
+                Form {
+                    if !device.isPaired {
+                        pairingSection
+                        detailsSection
+                    } else if page == .plugins {
+                        pluginsSection
+                    } else {
+                        detailsSection
+                        Section {
+                            Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
+                        }
                     }
                 }
+                .formStyle(.grouped)
             }
         }
-        .formStyle(.grouped)
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
         .safeAreaBar(edge: .top) {
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 header
+                if device.isPaired, device.isReachable {
+                    actionsBar.frame(maxWidth: .infinity)
+                }
                 if device.isPaired {
                     Picker("Page", selection: $page) {
                         ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.tabs)
                     .labelsHidden()
+                    .frame(maxWidth: .infinity)
                 }
             }
             // Same width as the grouped form's cards. The inset is the rows'
@@ -59,7 +77,16 @@ struct DeviceDetail: View {
             .frame(maxWidth: 704)
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 4)
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity)
+            // The system draws a hairline under the bar. This one pixel, on
+            // top of it in both states, makes the line clearer and keeps it
+            // the same whether or not content is under the bar.
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 1 / displayScale)
+            }
         }
         .overlay {
             if dropTargeted {
@@ -154,54 +181,36 @@ struct DeviceDetail: View {
         }
     }
 
-    private var actionsSection: some View {
-        Section {
-            let id = device.id
-            // One container, so that the glass buttons blend and morph together.
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    if device.has(.findMyPhone) {
-                        ActionButton("Ring", symbol: "speaker.wave.3") {
-                            store.perform("Ring") { try await $0.ring(id) }
-                        }
-                    }
-                    if device.has(.ping) {
-                        ActionButton("Ping", symbol: "dot.radiowaves.left.and.right") {
-                            store.perform("Ping") { try await $0.ping(id) }
-                        }
-                    }
-                    if device.has(.clipboard) {
-                        ActionButton("Send Clipboard", symbol: "doc.on.clipboard") {
-                            store.perform("Send clipboard") { try await $0.sendClipboard(id) }
-                        }
-                    }
-                    if device.has(.share) {
-                        ActionButton("Send Files…", symbol: "paperplane") { FileSender.choose(for: device, store: store) }
-                    }
-                    if device.has(.sms) {
-                        ActionButton("Messages", symbol: "message") { store.openSMSApp() }
+    /// The device actions as one row of glass buttons in the header bar,
+    /// not in a card of their own.
+    private var actionsBar: some View {
+        let id = device.id
+        // One container, so that the glass buttons blend and morph together.
+        return GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                if device.has(.findMyPhone) {
+                    ActionButton("Ring", symbol: "speaker.wave.3") {
+                        store.perform("Ring") { try await $0.ring(id) }
                     }
                 }
+                if device.has(.ping) {
+                    ActionButton("Ping", symbol: "dot.radiowaves.left.and.right") {
+                        store.perform("Ping") { try await $0.ping(id) }
+                    }
+                }
+                if device.has(.clipboard) {
+                    ActionButton("Send Clipboard", symbol: "doc.on.clipboard") {
+                        store.perform("Send clipboard") { try await $0.sendClipboard(id) }
+                    }
+                }
+                if device.has(.share) {
+                    ActionButton("Send Files…", symbol: "paperplane") { FileSender.choose(for: device, store: store) }
+                        .help("Choose files to send. You can also drop files on this window.")
+                }
+                if device.has(.sms) {
+                    ActionButton("Messages", symbol: "message") { store.openSMSApp() }
+                }
             }
-            .listRowBackground(Color.clear)
-        } header: {
-            Text("Actions")
-        } footer: {
-            if canShare {
-                Text("You can also drop files on this window to send them.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var notificationsSection: some View {
-        Section("Notifications") {
-            if device.notifications.isEmpty {
-                Text(device.isReachable ? "No notifications." : "Notifications show when the device is connected.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(device.notifications) { NotificationRow(deviceId: device.id, notification: $0) }
         }
     }
 
@@ -324,72 +333,16 @@ private struct ActionButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.title3)
-                Text(title).font(.caption)
-            }
-            .frame(maxWidth: .infinity, minHeight: 48)
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.roundedRectangle(radius: 14))
+        Button(title, systemImage: symbol, action: action)
+            .buttonStyle(.glass)
+            .controlSize(.large)
     }
 }
 
-private struct NotificationRow: View {
-    @Environment(KDEConnectStore.self) private var store
-    let deviceId: String
-    let notification: PhoneNotification
-    @State private var replying = false
-    @State private var reply = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    if !notification.title.isEmpty {
-                        Text(notification.title).fontWeight(.medium)
-                    }
-                    if !notification.text.isEmpty {
-                        Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
-                    }
-                }
-                Spacer()
-                if !notification.replyId.isEmpty {
-                    Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
-                        .help("Reply")
-                }
-                if notification.dismissable {
-                    Button("Dismiss", systemImage: "xmark.circle.fill") {
-                        let (d, n) = (deviceId, notification.id)
-                        store.perform("Dismiss") { try await $0.dismissNotification(deviceId: d, notificationId: n) }
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .help("Dismiss on the device")
-                }
-            }
-            if replying {
-                HStack {
-                    TextField("Reply", text: $reply)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(sendReply)
-                    Button("Send", action: sendReply).disabled(reply.isEmpty)
-                }
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func sendReply() {
-        guard !reply.isEmpty else { return }
-        let (d, r, m) = (deviceId, notification.replyId, reply)
-        store.perform("Reply") { try await $0.replyToNotification(deviceId: d, replyId: r, message: m) }
-        reply = ""
-        replying = false
-    }
+extension Notification.Name {
+    /// Debug aid: scrolls the Overview page, so that captures can show
+    /// content under the header bar.
+    static let debugScrollPage = Notification.Name("KDEConnectNativeDebugScrollPage")
+    /// Debug aid: expands or collapses every notification stack.
+    static let debugToggleStacks = Notification.Name("KDEConnectNativeDebugToggleStacks")
 }

@@ -128,8 +128,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// launch at login stays in the menu bar.
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
-        store.start()
         let args = CommandLine.arguments
+        if args.contains("--demo") {
+            store.showDemo()
+        } else {
+            store.start()
+        }
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
             await Snapshot.write(store: store, to: args[index + 1])
             return
@@ -140,6 +144,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let index = args.firstIndex(of: "--plugin-snapshot"), index + 2 < args.count {
             await Snapshot.writePluginSheet(store: store, plugin: args[index + 1], to: args[index + 2])
+            return
+        }
+        if let index = args.firstIndex(of: "--stack-test"), index + 1 < args.count {
+            await SidebarTest.stackTest(outputDirectory: args[index + 1])
+            return
+        }
+        if let index = args.firstIndex(of: "--swipe-test"), index + 1 < args.count {
+            await SidebarTest.swipeTest(outputDirectory: args[index + 1])
             return
         }
         if args.contains("--sidebar-test") {
@@ -270,6 +282,19 @@ enum SidebarTest {
             print(line)
         }
         print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
+        // Logs every toolbar item that is added or removed while the test runs.
+        nonisolated(unsafe) var changes: [String] = []
+        let start = ContinuousClock.now
+        for name in [NSToolbar.willAddItemNotification, NSToolbar.didRemoveItemNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window.toolbar, queue: nil) { n in
+                nonisolated(unsafe) let note = n
+                MainActor.assumeIsolated {
+                    let id = (note.userInfo?["item"] as? NSToolbarItem)?.itemIdentifier.rawValue ?? "?"
+                    let sign = note.name == NSToolbar.willAddItemNotification ? "+" : "-"
+                    changes.append("\(sign)\(id.suffix(14)) @\(Int((ContinuousClock.now - start) / .milliseconds(1)))ms")
+                }
+            }
+        }
         func shoot(_ name: String) {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -287,6 +312,101 @@ enum SidebarTest {
         await sample("single", for: .milliseconds(900), toggleAt: [0])
         await sample("back", for: .milliseconds(900), toggleAt: [0])
         await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
+        print("toolbar changes during the test:", changes.isEmpty ? ["none"] : changes)
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --swipe-test <dir>` posts a synthetic two-finger
+    /// swipe over the first notification card and saves window images in
+    /// the middle of the swipe and after it.
+    static func swipeTest(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+              let store = WindowOpener.shared.store else { NSApp.terminate(nil); return }
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        // The first card is about 300 pt below the top of the window, centred.
+        let frame = window.frame
+        let point = CGPoint(x: frame.midX + 120, y: (NSScreen.screens.first?.frame.height ?? 0) - frame.maxY + 310)
+        func post(dx: CGFloat, phase: Int64) {
+            guard let cg = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                   wheel1: 0, wheel2: Int32(dx), wheel3: 0) else { return }
+            cg.location = point
+            cg.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+            cg.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+            cg.setIntegerValueField(.scrollWheelEventPointDeltaAxis2, value: Int64(dx))
+            cg.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: Double(dx))
+            cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(window.windowNumber))
+            cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(window.windowNumber))
+            if let event = NSEvent(cgEvent: cg) { NSApp.postEvent(event, atStart: false) }
+        }
+        HorizontalSwipeCatcher.CatcherView.acceptsWindowlessEvents = true
+        let before = store.selectedDevice?.notifications.count ?? 0
+        post(dx: -8, phase: 1)  // began
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(dx: -12, phase: 2)  // changed
+        }
+        try? await Task.sleep(for: .milliseconds(150))
+        shoot("swipe-mid.png")
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(dx: -14, phase: 2)
+        }
+        post(dx: 0, phase: 4)  // ended
+        try? await Task.sleep(for: .milliseconds(700))
+        shoot("swipe-after.png")
+        // The other way, on the card that is now first.
+        post(dx: 8, phase: 1)
+        for _ in 0..<12 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(dx: 14, phase: 2)
+        }
+        try? await Task.sleep(for: .milliseconds(150))
+        shoot("swipe-right-mid.png")
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(dx: 14, phase: 2)
+        }
+        post(dx: 0, phase: 4)
+        try? await Task.sleep(for: .milliseconds(700))
+        shoot("swipe-right-after.png")
+        print("cards after: \(store.selectedDevice?.notifications.count ?? 0) (demo keeps the data; the view hides dismissed cards)")
+        print("cards before: \(before)")
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --stack-test <dir>` expands, then collapses the
+    /// notification stacks and saves window frames during each animation.
+    static func stackTest(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        shoot("stack-0-collapsed.png")
+        for phase in ["open", "close"] {
+            NotificationCenter.default.post(name: .debugToggleStacks, object: nil)
+            for ms in [60, 140, 240] {
+                try? await Task.sleep(for: .milliseconds(ms == 60 ? 60 : ms == 140 ? 80 : 100))
+                shoot("stack-\(phase)-\(ms)ms.png")
+            }
+            try? await Task.sleep(for: .milliseconds(600))
+            shoot("stack-\(phase)-end.png")
+        }
         NSApp.terminate(nil)
     }
 
@@ -294,7 +414,7 @@ enum SidebarTest {
     static func captureWindow(to path: String) async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(2))
-        if let store = WindowOpener.shared.store {
+        if let store = WindowOpener.shared.store, store.selectedDeviceId == nil {
             store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
         }
         try? await Task.sleep(for: .seconds(1.5))
@@ -305,6 +425,15 @@ enum SidebarTest {
             task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path.replacingOccurrences(of: ".png", with: "-screen.png")]
             try? task.run()
             task.waitUntilExit()
+            // Then scroll the page, so that content is under the header bar.
+            NotificationCenter.default.post(name: .debugScrollPage, object: nil)
+            try? await Task.sleep(for: .milliseconds(600))
+            let again = Process()
+            again.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            again.arguments = ["-x", "-o", "-l", String(window.windowNumber),
+                               path.replacingOccurrences(of: ".png", with: "-scrolled.png")]
+            try? again.run()
+            again.waitUntilExit()
         }
         if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
            let frame = window.contentView?.superview,
