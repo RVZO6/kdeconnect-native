@@ -6,13 +6,19 @@ import SwiftUI
 struct KDEConnectNativeApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var store = KDEConnectStore()
+    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = true
 
     var body: some Scene {
         Window("KDE Connect", id: MainWindow.id) {
             MainWindow()
                 .environment(store)
         }
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 900, height: 620)
+        // The window follows the content's size range (see MainWindow), so
+        // it cannot grow past a size where the layout still works.
+        .windowResizability(.contentSize)
+        // A companion window: it stays above other apps' windows.
+        .windowLevel(keepWindowOnTop ? .floating : .normal)
         .defaultLaunchBehavior(.suppressed)
         .commands {
             CommandGroup(after: .newItem) {
@@ -451,6 +457,8 @@ enum SidebarTest {
         }
         try? await Task.sleep(for: .seconds(1.5))
         if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) {
+            print("window level \(window.level.rawValue) (floating is \(NSWindow.Level.floating.rawValue)),",
+                  "content min \(window.contentMinSize), max \(window.contentMaxSize), frame \(window.frame.size)")
             // A real screen capture shows Liquid Glass; cacheDisplay does not.
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")

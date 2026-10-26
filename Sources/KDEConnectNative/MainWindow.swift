@@ -26,6 +26,10 @@ struct MainWindow: View {
         // The device page shows the device name in its header, so the
         // toolbar does not repeat it. The window keeps a title for Mission
         // Control and the Window menu.
+        // Wide enough for the sidebar and one form column, and no larger than
+        // the content uses: the form column (704 pt) with margins and the
+        // sidebar, and a height that shows a full page without empty space.
+        .frame(minWidth: 720, idealWidth: 900, maxWidth: 1000, minHeight: 480, idealHeight: 620, maxHeight: 780)
         .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar(removing: .title)
         .sheet(isPresented: $store.isPairingSheetShown) {
@@ -169,7 +173,7 @@ private struct DeviceRow: View {
                 Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         } icon: {
-            Image(systemName: device.kind.symbol)
+            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 24, muted: !device.isReachable)
         }
         .tag(device.id)
     }

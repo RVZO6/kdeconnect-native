@@ -75,10 +75,9 @@ struct DeviceDetail: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            // Same width as the grouped form's cards. The inset is the rows'
-            // 11 pt less the phone symbol's own side bearing, so the visible
-            // edge of the icon lines up with the row text below.
-            .padding(.horizontal, 4)
+            // Same width and inset as the grouped form's rows, so the tile
+            // lines up with the row content below.
+            .padding(.horizontal, 11)
             .frame(maxWidth: 704)
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -123,10 +122,7 @@ struct DeviceDetail: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            Image(systemName: device.kind.symbol)
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(device.isReachable ? Color.accentColor : .secondary)
-                .frame(width: 44, alignment: .leading)
+            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 48, muted: !device.isReachable)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(device.name).font(.title.weight(.semibold)).lineLimit(1)
@@ -225,7 +221,7 @@ struct DeviceDetail: View {
                 Text("No plugins reported.").foregroundStyle(.secondary)
             }
             ForEach(sortedPlugins, id: \.self) { plugin in
-                LabeledContent(Plugin.displayName(for: plugin)) {
+                LabeledContent {
                     HStack(spacing: 10) {
                         // Every row keeps the gear's space, so that the
                         // switches stay in one column.
@@ -239,6 +235,14 @@ struct DeviceDetail: View {
                         Toggle(Plugin.displayName(for: plugin), isOn: pluginBinding(plugin))
                             .labelsHidden()
                             .toggleStyle(.switch)
+                    }
+                } label: {
+                    let tile = Plugin.tile(for: plugin)
+                    Label {
+                        Text(Plugin.displayName(for: plugin))
+                    } icon: {
+                        IconTile(symbol: tile.symbol, color: tile.color,
+                                 muted: store.pluginStates[device.id]?[plugin] == false)
                     }
                 }
             }
