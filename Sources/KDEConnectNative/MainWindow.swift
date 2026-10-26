@@ -7,8 +7,10 @@ struct MainWindow: View {
 
     @Environment(KDEConnectStore.self) private var store
     @State private var sidebarShown = true
+    /// The width the user dragged the sidebar to.
+    @AppStorage("sidebarWidth") private var sidebarWidth: Double = 250
 
-    static let sidebarWidth: CGFloat = 250
+    static let sidebarWidthRange: ClosedRange<Double> = 200...340
 
     var body: some View {
         let _ = UIBenchmark.recordUpdate("MainWindow")
@@ -20,9 +22,9 @@ struct MainWindow: View {
         // sidebar width, so the page moves with it on every frame.
         HStack(spacing: 0) {
             Sidebar(selection: $store.selectedDeviceId)
-                .frame(width: Self.sidebarWidth)
+                .frame(width: sidebarWidth)
                 // The sidebar slides out to the left while its column shrinks.
-                .frame(width: sidebarShown ? Self.sidebarWidth : 0, alignment: .trailing)
+                .frame(width: sidebarShown ? sidebarWidth : 0, alignment: .trailing)
                 .clipped()
                 // After the clip, so that the material also fills the strip
                 // under the toolbar, as a system sidebar does.
@@ -34,6 +36,12 @@ struct MainWindow: View {
                         .ignoresSafeArea()
                         .opacity(sidebarShown ? 1 : 0)
                 }
+                .overlay(alignment: .trailing) {
+                    if sidebarShown { SidebarResizeHandle(width: $sidebarWidth, range: Self.sidebarWidthRange) }
+                }
+                // Above the page, so the handle's half over the page edge
+                // still receives the drag.
+                .zIndex(1)
                 .accessibilityHidden(!sidebarShown)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -287,4 +295,32 @@ private struct SidebarMaterial: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+/// A thin strip on the sidebar's edge that resizes it, as a split view
+/// divider does: the resize cursor on hover, the width follows the drag.
+private struct SidebarResizeHandle: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    @State private var startWidth: Double?
+
+    var body: some View {
+        Color.clear
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .offset(x: 4)
+            .onHover { inside in
+                if inside { NSCursor.columnResize.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { value in
+                        let start = startWidth ?? width
+                        startWidth = start
+                        width = min(max(start + value.translation.width, range.lowerBound), range.upperBound)
+                    }
+                    .onEnded { _ in startWidth = nil }
+            )
+            .accessibilityHidden(true)
+    }
 }

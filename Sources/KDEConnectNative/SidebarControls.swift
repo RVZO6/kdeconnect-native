@@ -87,5 +87,12 @@ struct SidebarControls: View {
             .padding(.horizontal, 3)
             .glassEffect(.regular.interactive(), in: .capsule)
         }
+        // A fixed width with room for the +, so the toolbar item never
+        // changes size. Otherwise the toolbar re-centres the item while the
+        // + comes and goes, and the sidebar button slides sideways.
+        .frame(width: Self.fullWidth, alignment: .leading)
     }
+
+    /// Sidebar button + plus button + the capsule's side padding.
+    private static let fullWidth: CGFloat = 36 + 34 + 6
 }

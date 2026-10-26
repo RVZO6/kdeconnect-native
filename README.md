@@ -87,6 +87,7 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 - Fill the window with a sample connected phone, without the daemon: add `--demo` (for example with `--window-snapshot`, which also saves a capture with the page scrolled)
 - Post a synthetic two-finger swipe each way over the first notification and save captures: `--demo --swipe-test /tmp/swipe`
 - Expand and collapse the notification stacks and save frames during the animation: `--demo --stack-test /tmp/stack`
+- Drag the sidebar edge with posted mouse events, then open Settings and print the window levels: `--demo --resize-test`
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`
 - Run the scrolling workload without a daemon: add `--demo --demo-notifications 300 --demo-apps 20 --ui-benchmark /tmp/ui.json`
 - See [performance measurements and test commands](Benchmarks/README.md).

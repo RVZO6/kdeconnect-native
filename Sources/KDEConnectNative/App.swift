@@ -55,16 +55,23 @@ struct KDEConnectNativeApp: App {
             SettingsView()
                 .environment(store)
         }
+        // At the main window's level; at the normal level, the floating main
+        // window would cover it.
+        .windowLevel(keepWindowOnTop ? .floating : .normal)
     }
 }
 
 struct StatusIcon: View {
     let store: KDEConnectStore
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
-            .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onAppear {
+                WindowOpener.shared.open = { openWindow(id: MainWindow.id) }
+                WindowOpener.shared.openSettings = { openSettings() }
+            }
             .onChange(of: store.pairingRequests) { _, requests in PairingPrompt.requestsChanged(requests) }
             .onChange(of: store.pairingRequests.map(\.id)) { old, new in
                 // Ask at once when a device wants to pair, also without the window.
@@ -95,6 +102,7 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
+    var openSettings: (() -> Void)?
     /// Set at launch; used by the debug capture to select a device.
     var store: KDEConnectStore?
     private var closeObserver: NSObjectProtocol?
@@ -181,6 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let index = args.firstIndex(of: "--swipe-test"), index + 1 < args.count {
             await SidebarTest.swipeTest(outputDirectory: args[index + 1])
+            return
+        }
+        if args.contains("--resize-test") {
+            await SidebarTest.resizeTest()
             return
         }
         if args.contains("--sidebar-test") {
@@ -443,6 +455,47 @@ enum SidebarTest {
             }
             try? await Task.sleep(for: .milliseconds(600))
             shoot("stack-\(phase)-end.png")
+        }
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --resize-test` drags the sidebar's edge 60 pt to
+    /// the right with posted mouse events and prints the stored width.
+    static func resizeTest() async {
+        UserDefaults.standard.set(250.0, forKey: "sidebarWidth")
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        let before = UserDefaults.standard.double(forKey: "sidebarWidth")
+        // A click in an inactive window only activates it, so start active.
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        try? await Task.sleep(for: .milliseconds(500))
+        func post(_ type: NSEvent.EventType, x: CGFloat) {
+            let point = NSPoint(x: x, y: window.contentLayoutRect.midY)
+            if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                              clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1) {
+                NSApp.postEvent(event, atStart: false)
+            }
+        }
+        post(.leftMouseDown, x: 251)
+        for step in 1...12 {
+            try? await Task.sleep(for: .milliseconds(16))
+            post(.leftMouseDragged, x: 251 + CGFloat(step * 5))
+        }
+        post(.leftMouseUp, x: 311)
+        try? await Task.sleep(for: .milliseconds(400))
+        print("sidebar width before \(before), after \(UserDefaults.standard.double(forKey: "sidebarWidth"))")
+        UserDefaults.standard.set(before, forKey: "sidebarWidth")
+        // Then open Settings and print each window's level: Settings must
+        // not sit below the floating main window.
+        WindowOpener.shared.openSettings?()
+        try? await Task.sleep(for: .seconds(1))
+        for w in NSApp.windows where w.isVisible {
+            print("window \(w.title.isEmpty ? w.identifier?.rawValue ?? "?" : w.title): level \(w.level.rawValue)")
         }
         NSApp.terminate(nil)
     }
