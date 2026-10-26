@@ -6,7 +6,7 @@ import SwiftUI
 struct KDEConnectNativeApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var store = KDEConnectStore()
-    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = true
+    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = false
 
     var body: some Scene {
         Window("KDE Connect", id: MainWindow.id) {

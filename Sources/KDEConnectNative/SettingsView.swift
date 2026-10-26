@@ -17,7 +17,7 @@ private struct GeneralSettings: View {
     @Environment(KDEConnectStore.self) private var store
     @State private var name = ""
     @State private var launchAtLogin = LoginItem.isEnabled
-    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = true
+    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = false
     @State private var loginError: String?
 
     var body: some View {
