@@ -1,4 +1,4 @@
-# KDE Connect UI
+# KDE connect swiftui (in lack of a better name)
 
 <img src="Design/icon-finals/v25b3-final-a2-default.png" alt="App icon" width="160" />
 
