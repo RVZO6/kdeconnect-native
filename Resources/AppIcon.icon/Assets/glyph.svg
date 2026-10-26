@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- A dot with signal arcs on both sides: two devices talking. -->
+  <circle cx="512" cy="520" r="34" fill="#1D99F3"/>
+  <g fill="none" stroke="#1D99F3" stroke-width="30" stroke-linecap="round">
+    <path d="M 461.1 469.1 A 72 72 0 0 0 461.1 570.9"/>
+    <path d="M 562.9 469.1 A 72 72 0 0 1 562.9 570.9"/>
+    <path d="M 422.2 430.2 A 127 127 0 0 0 422.2 609.8"/>
+    <path d="M 601.8 430.2 A 127 127 0 0 1 601.8 609.8"/>
+  </g>
+</svg>

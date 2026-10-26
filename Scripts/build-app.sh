@@ -14,12 +14,14 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/KDEConnectNative"
 cp Resources/Info.plist "$app/Contents/Info.plist"
-# Reuse the KDE Connect icon when it is installed.
-icon="/Applications/KDE Connect.app/Contents/Resources/sc-apps-kdeconnect.icns"
-if [[ -f "$icon" ]]; then
-    cp "$icon" "$app/Contents/Resources/AppIcon.icns"
-    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$app/Contents/Info.plist"
-fi
+# Compile the Icon Composer document into Assets.car and AppIcon.icns.
+partial="$(mktemp -t kdeconnect-icon)"
+xcrun actool Resources/AppIcon.icon --compile "$app/Contents/Resources" \
+    --platform macosx --minimum-deployment-target 15.0 --app-icon AppIcon \
+    --output-partial-info-plist "$partial" >/dev/null
+rm -f "$partial"
+/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" \
+    -c "Add :CFBundleIconName string AppIcon" "$app/Contents/Info.plist"
 codesign --force --sign - --timestamp=none "$app"
 echo "Built $app"
 
