@@ -30,7 +30,6 @@ public struct DaemonLocator: Sendable {
               FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
     }
-    public var settingsAppURL: URL? { executable("kdeconnect-app") }
     public var smsAppURL: URL? { executable("kdeconnect-sms") }
 
     private func executable(_ name: String) -> URL? {

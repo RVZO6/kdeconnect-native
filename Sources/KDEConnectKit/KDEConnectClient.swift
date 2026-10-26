@@ -49,6 +49,33 @@ public struct KDEConnectClient: Sendable {
         _ = try await call(Self.root, "org.kde.kdeconnect.daemon", "forceOnNetworkChange")
     }
 
+    public func setAnnouncedName(_ name: String) async throws {
+        _ = try await call(Self.root, "org.kde.kdeconnect.daemon", "setAnnouncedName", [.string(name)])
+    }
+
+    public func linkProviders() async throws -> [LinkProvider] {
+        let reply = try await call(Self.root, "org.kde.kdeconnect.daemon", "linkProviders")
+        return (reply.first?.stringArrayValue ?? []).compactMap(LinkProvider.init)
+    }
+
+    public func setLinkProvider(_ id: String, enabled: Bool) async throws {
+        _ = try await call(Self.root, "org.kde.kdeconnect.daemon", "setLinkProviderState", [.string(id), .bool(enabled)])
+    }
+
+    /// Addresses that the daemon contacts directly, for networks without
+    /// broadcast discovery (for example, a VPN such as Tailscale).
+    public func customDevices() async throws -> [String] {
+        let reply = try await call(Self.root, "org.freedesktop.DBus.Properties", "Get",
+                                   [.string("org.kde.kdeconnect.daemon"), .string("customDevices")])
+        return reply.first?.stringArrayValue ?? []
+    }
+
+    public func setCustomDevices(_ addresses: [String]) async throws {
+        _ = try await call(Self.root, "org.freedesktop.DBus.Properties", "Set",
+                           [.string("org.kde.kdeconnect.daemon"), .string("customDevices"),
+                            .variant(.stringArray(addresses))])
+    }
+
     /// Subscribes this connection to every signal that kdeconnectd emits.
     public func subscribeToSignals() async throws {
         try await connection.addMatch("type='signal',sender='\(Self.service)'")
@@ -95,6 +122,22 @@ public struct KDEConnectClient: Sendable {
         }
         // Higher public IDs are newer.
         return result.sorted { (Int($0.id) ?? 0) > (Int($1.id) ?? 0) }
+    }
+
+    /// Enabled state of each plugin that the device supports.
+    public func pluginStates(_ id: String, plugins: [String]) async throws -> [String: Bool] {
+        var result: [String: Bool] = [:]
+        for plugin in plugins {
+            let reply = try await call(Self.devicePath(id), "org.kde.kdeconnect.device", "isPluginEnabled",
+                                       [.string(plugin)])
+            result[plugin] = reply.first?.boolValue ?? false
+        }
+        return result
+    }
+
+    public func setPluginEnabled(_ id: String, plugin: String, enabled: Bool) async throws {
+        _ = try await call(Self.devicePath(id), "org.kde.kdeconnect.device", "setPluginEnabled",
+                           [.string(plugin), .bool(enabled)])
     }
 
     // MARK: Actions

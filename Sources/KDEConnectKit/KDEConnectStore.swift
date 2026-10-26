@@ -25,6 +25,10 @@ public final class KDEConnectStore {
     public private(set) var devices: [Device] = []
     public private(set) var announcedName = ""
     public private(set) var lastError: String?
+    public private(set) var linkProviders: [LinkProvider] = []
+    public private(set) var customDevices: [String] = []
+    /// The device that the main window shows.
+    public var selectedDeviceId: String?
 
     public var autoStartDaemon: Bool {
         didSet { UserDefaults.standard.set(autoStartDaemon, forKey: Self.autoStartKey) }
@@ -282,7 +286,13 @@ public final class KDEConnectStore {
             for id in ids {
                 if let device = try? await client.device(id) { result.append(device) }
             }
+            let providers = (try? await client.linkProviders()) ?? linkProviders
+            let custom = (try? await client.customDevices()) ?? customDevices
+            let name = (try? await client.announcedName()) ?? announcedName
             guard self.client?.connection === client.connection else { return }
+            linkProviders = providers
+            customDevices = custom
+            announcedName = name
             devices = result.sorted { a, b in
                 if a.isReachable != b.isReachable { return a.isReachable }
                 return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
@@ -314,7 +324,47 @@ public final class KDEConnectStore {
 
     public func clearError() { lastError = nil }
 
-    public func openSettingsApp() { runBundled(locator.settingsAppURL, name: "KDE Connect settings") }
+    public var selectedDevice: Device? { devices.first { $0.id == selectedDeviceId } }
+
+    /// Asks the daemon to announce itself again on every network.
+    public func refreshNetwork() {
+        perform("Refresh") { try await $0.forceOnNetworkChange() }
+    }
+
+    public func setAnnouncedName(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != announcedName else { return }
+        perform("Rename this device") { try await $0.setAnnouncedName(trimmed) }
+    }
+
+    public func setLinkProvider(_ id: String, enabled: Bool) {
+        perform("Change connection type") { try await $0.setLinkProvider(id, enabled: enabled) }
+    }
+
+    public func addCustomDevice(_ address: String) {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !customDevices.contains(trimmed) else { return }
+        let list = customDevices + [trimmed]
+        customDevices = list
+        perform("Add device address") { try await $0.setCustomDevices(list) }
+    }
+
+    public func removeCustomDevice(_ address: String) {
+        let list = customDevices.filter { $0 != address }
+        customDevices = list
+        perform("Remove device address") { try await $0.setCustomDevices(list) }
+    }
+
+    /// Reads which plugins are enabled for a device. Nil when not connected.
+    public func pluginStates(for device: Device) async -> [String: Bool]? {
+        guard let client else { return nil }
+        return try? await client.pluginStates(device.id, plugins: device.supportedPlugins)
+    }
+
+    public func setPluginEnabled(deviceId: String, plugin: String, enabled: Bool) {
+        perform("Change plugin") { try await $0.setPluginEnabled(deviceId, plugin: plugin, enabled: enabled) }
+    }
+
     public func openSMSApp() { runBundled(locator.smsAppURL, name: "KDE Connect SMS") }
 
     /// Runs a helper app from the KDE Connect bundle. They are plain
