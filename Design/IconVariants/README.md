@@ -1,6 +1,6 @@
 # Final icon candidates
 
-The application icon has not been replaced. These are editable Icon Composer documents and verified comparison renders.
+**Selected application icon: final-a2**, a version of final-a with a stronger but soft fade and a soft background gradient (see `Design/icon-finals`). `Resources/AppIcon.icon` is a copy of `Design/icon-finals/v25b3-final-a2.icon`. These are editable Icon Composer documents and verified comparison renders.
 
 **Recommendation: final-e.** It retains the strong two-arc design, with more clearance around the tilted phone than final-d. Final-d is the heavier alternative. Final-f is the clearest conventional Wi-Fi symbol. Among a–c, final-b has the softest outer arc; final-a is stronger, and final-c leaves more space above the phone.
 
