@@ -37,99 +37,21 @@ struct NotificationCards: View {
                     .padding(.vertical, 6)
             }
             ForEach(groups, id: \.app) { group in
-                let isOpen = group.items.count == 1 || expanded.contains(group.app)
-                VStack(alignment: .leading, spacing: 8) {
-                    header(group, isOpen: isOpen)
-                    if isOpen {
-                        ForEach(group.items) { notification in
-                            NotificationCard(deviceId: device.id, notification: notification,
-                                             showsAppName: false) {
-                                withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(notification.id) }
-                            }
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                        }
-                    } else {
-                        stack(group)
-                    }
-                }
+                NotificationGroup(
+                    app: group.app, items: group.items, deviceId: device.id,
+                    isExpanded: Binding(
+                        get: { group.items.count == 1 || expanded.contains(group.app) },
+                        set: { open in
+                            if open { expanded.insert(group.app) } else { expanded.remove(group.app) }
+                        }),
+                    onDismissed: { id in
+                        withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(id) }
+                    },
+                    onClear: { clear(group.items) })
             }
         }
         .onChange(of: device.notifications.map(\.id)) { _, ids in
             dismissed.formIntersection(ids)
-        }
-    }
-
-    private func header(_ group: (app: String, items: [PhoneNotification]), isOpen: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            if group.items.count > 1 {
-                Button {
-                    toggle(group.app)
-                } label: {
-                    // The chevron follows the count, so that every app name
-                    // starts at the same edge.
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(group.app).font(.headline)
-                        Text("\(group.items.count)")
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                            .rotationEffect(.degrees(isOpen ? 90 : 0))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(isOpen ? "Collapse" : "Expand")
-            } else {
-                Text(group.app).font(.headline)
-            }
-            Spacer()
-            if group.items.contains(where: \.dismissable) {
-                Button("Clear") { clear(group.items) }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .help("Dismiss all \(group.app) notifications on the device")
-            }
-        }
-        .padding(.horizontal, 11)
-    }
-
-    /// A collapsed group: the newest card in front, the edges of two more
-    /// behind it. Click to open; swipe it off to clear the whole group.
-    private func stack(_ group: (app: String, items: [PhoneNotification])) -> some View {
-        let first = group.items[0]
-        return Button {
-            toggle(group.app)
-        } label: {
-            NotificationSummary(notification: first, more: group.items.count - 1)
-        }
-        .buttonStyle(.plain)
-        .shadow(color: .black.opacity(0.08), radius: 1.5, y: 1)
-        .padding(.bottom, group.items.count > 2 ? 12 : 6)
-        .background(alignment: .bottom) {
-            // The edges of the cards behind, each a little darker and narrower.
-            ZStack(alignment: .bottom) {
-                if group.items.count > 2 {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primary.opacity(0.05))
-                        .padding(.horizontal, 24)
-                        .frame(height: 40)
-                }
-                RoundedRectangle(cornerRadius: 13)
-                    .fill(Color.primary.opacity(0.08))
-                    .padding(.horizontal, 12)
-                    .frame(height: 40)
-                    .padding(.bottom, group.items.count > 2 ? 6 : 0)
-            }
-        }
-        .swipeToDismiss(enabled: group.items.contains(where: \.dismissable)) { clear(group.items) }
-        .help("Show all \(group.items.count) notifications")
-    }
-
-    private func toggle(_ app: String) {
-        withAnimation(.snappy(duration: 0.25)) {
-            if expanded.contains(app) { expanded.remove(app) } else { expanded.insert(app) }
         }
     }
 
@@ -144,25 +66,141 @@ struct NotificationCards: View {
     }
 }
 
-/// The front card of a collapsed stack.
-private struct NotificationSummary: View {
-    let notification: PhoneNotification
-    let more: Int
+/// One app's notifications. With more than one, they collapse into a
+/// stack of real cards: the newest in front, the next two peeking out
+/// below it, slightly smaller. Expanding springs each card out of the
+/// stack into its own place in the list; collapsing springs them back.
+private struct NotificationGroup: View {
+    let app: String
+    let items: [PhoneNotification]
+    let deviceId: String
+    @Binding var isExpanded: Bool
+    let onDismissed: (String) -> Void
+    let onClear: () -> Void
+    /// The front card's height; the cards behind take it while stacked.
+    @State private var frontHeight: CGFloat = 60
+
+    private var isStacked: Bool { !isExpanded && items.count > 1 }
+    private static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if !notification.title.isEmpty {
-                Text(notification.title).fontWeight(.medium)
+        VStack(alignment: .leading, spacing: 8) {
+            header
+                .onReceive(NotificationCenter.default.publisher(for: .debugToggleStacks)) { _ in
+                    guard items.count > 1 else { return }
+                    withAnimation(Self.spring) { isExpanded.toggle() }
+                }
+            StackLayout(stacked: isStacked) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, notification in
+                    card(notification, index: index)
+                }
             }
-            if !notification.text.isEmpty {
-                Text(notification.text).foregroundStyle(.secondary).lineLimit(2)
-            }
-            Text("\(more) more").font(.caption).foregroundStyle(.secondary)
+            .modifier(StackSwipe(enabled: isStacked && items.contains(where: \.dismissable), onSwipe: onClear))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-        .contentShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func card(_ notification: PhoneNotification, index: Int) -> some View {
+        let depth = isStacked ? min(index, 2) : 0
+        let behind = isStacked && index > 0
+        return NotificationCard(
+            deviceId: deviceId, notification: notification, showsAppName: false,
+            contentHidden: behind, fixedHeight: behind ? frontHeight : nil,
+            swipeEnabled: !isStacked,
+            onDismissed: { onDismissed(notification.id) })
+        .scaleEffect(1 - 0.05 * CGFloat(depth), anchor: .bottom)
+        .opacity(isStacked && index > 2 ? 0 : 1)
+        .allowsHitTesting(!behind)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            if index == 0, !behind { frontHeight = height }
+        }
+        .overlay {
+            // While stacked, a click anywhere on the front card opens the stack.
+            Color.clear
+                .contentShape(RoundedRectangle(cornerRadius: 14))
+                .onTapGesture { withAnimation(Self.spring) { isExpanded = true } }
+                .help("Show all \(items.count) notifications")
+                .allowsHitTesting(isStacked && index == 0)
+        }
+        // Outermost, so that the stack layout draws the newest card on top.
+        .zIndex(Double(-index))
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if items.count > 1 {
+                Button {
+                    withAnimation(Self.spring) { isExpanded.toggle() }
+                } label: {
+                    // The chevron follows the count, so that every app name
+                    // starts at the same edge.
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(app).font(.headline)
+                        Text("\(items.count)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Collapse" : "Expand")
+            } else {
+                Text(app).font(.headline)
+            }
+            Spacer()
+            if items.contains(where: \.dismissable) {
+                Button("Clear", action: onClear)
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .help("Dismiss all \(app) notifications on the device")
+            }
+        }
+        .padding(.horizontal, 11)
+    }
+}
+
+/// Swipe to dismiss that can be switched off without changing the view
+/// structure. A branch here would give the cards a new identity when a
+/// stack opens or closes, and SwiftUI would fade them instead of moving them.
+private struct StackSwipe: ViewModifier {
+    let enabled: Bool
+    let onSwipe: () -> Void
+
+    func body(content: Content) -> some View {
+        content.swipeToDismiss(enabled: true, active: enabled, onDismiss: onSwipe)
+    }
+}
+
+/// Places cards as a list, or stacked: every card at the top, each one
+/// behind offset down by `peek`, so that its bottom edge shows.
+private struct StackLayout: Layout {
+    var stacked: Bool
+    var spacing: CGFloat = 8
+    var peek: CGFloat = 7
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 480
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+        guard let first = heights.first else { return CGSize(width: width, height: 0) }
+        if stacked {
+            return CGSize(width: width, height: first + peek * CGFloat(min(heights.count - 1, 2)))
+        }
+        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(heights.count - 1))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+            let origin = stacked
+                ? CGPoint(x: bounds.minX, y: bounds.minY + peek * CGFloat(min(index, 2)))
+                : CGPoint(x: bounds.minX, y: y)
+            subview.place(at: origin, proposal: ProposedViewSize(width: bounds.width, height: size.height))
+            y += size.height + spacing
+        }
     }
 }
 
@@ -172,6 +210,12 @@ private struct NotificationCard: View {
     let notification: PhoneNotification
     /// False inside an app group, whose header already names the app.
     var showsAppName = true
+    /// True for a card behind the front of a stack: only its edge shows.
+    var contentHidden = false
+    /// While stacked behind, the card takes the front card's height.
+    var fixedHeight: CGFloat? = nil
+    /// False while stacked; then the whole stack swipes as one.
+    var swipeEnabled = true
     let onDismissed: () -> Void
     @State private var replying = false
     @State private var reply = ""
@@ -212,11 +256,16 @@ private struct NotificationCard: View {
             }
         }
         .padding(12)
+        .opacity(contentHidden ? 0 : 1)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: fixedHeight, alignment: .top)
+        .clipped()
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+        // A faint edge, so that stacked cards read as separate layers.
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.06)))
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-        .swipeToDismiss(enabled: notification.dismissable, onDismiss: dismiss)
+        .modifier(StackSwipe(enabled: swipeEnabled && notification.dismissable, onSwipe: dismiss))
         .contextMenu {
             if canReply {
                 Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
@@ -249,13 +298,15 @@ private struct NotificationCard: View {
 extension View {
     /// Lets a two-finger horizontal swipe move the view. Past a threshold,
     /// releasing flies it off in that direction and calls `onDismiss`.
-    func swipeToDismiss(enabled: Bool, onDismiss: @escaping () -> Void) -> some View {
-        modifier(SwipeToDismiss(enabled: enabled, onDismiss: onDismiss))
+    /// When `active` is false, the view ignores swipes and they pass on.
+    func swipeToDismiss(enabled: Bool, active: Bool = true, onDismiss: @escaping () -> Void) -> some View {
+        modifier(SwipeToDismiss(enabled: enabled, active: active, onDismiss: onDismiss))
     }
 }
 
 private struct SwipeToDismiss: ViewModifier {
     let enabled: Bool
+    var active = true
     let onDismiss: () -> Void
     @State private var offset: CGFloat = 0
     @State private var width: CGFloat = 400
@@ -268,7 +319,7 @@ private struct SwipeToDismiss: ViewModifier {
             .offset(x: offset)
             .background { indicators }
             .background {
-                HorizontalSwipeCatcher(onChange: change, onEnd: end)
+                HorizontalSwipeCatcher(active: active, onChange: change, onEnd: end)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
@@ -328,17 +379,20 @@ private struct SwipeToDismiss: ViewModifier {
 /// passed on; anything else goes to the scroll view as usual. The view
 /// itself takes no clicks.
 struct HorizontalSwipeCatcher: NSViewRepresentable {
+    var active = true
     let onChange: (CGFloat) -> Void
     let onEnd: () -> Void
 
     func makeNSView(context: Context) -> CatcherView { CatcherView() }
 
     func updateNSView(_ view: CatcherView, context: Context) {
+        view.active = active
         view.onChange = onChange
         view.onEnd = onEnd
     }
 
     final class CatcherView: NSView {
+        var active = true
         var onChange: (CGFloat) -> Void = { _ in }
         var onEnd: () -> Void = {}
         private var monitor: Any?
@@ -379,7 +433,7 @@ struct HorizontalSwipeCatcher: NSViewRepresentable {
 
             if event.phase == .began {
                 let point = convert(event.locationInWindow, from: nil)
-                tracking = bounds.contains(point) ? .deciding : .idle
+                tracking = active && bounds.contains(point) ? .deciding : .idle
                 startX = 0
                 startY = 0
             }

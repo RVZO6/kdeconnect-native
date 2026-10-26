@@ -343,4 +343,6 @@ extension Notification.Name {
     /// Debug aid: scrolls the Overview page, so that captures can show
     /// content under the header bar.
     static let debugScrollPage = Notification.Name("KDEConnectNativeDebugScrollPage")
+    /// Debug aid: expands or collapses every notification stack.
+    static let debugToggleStacks = Notification.Name("KDEConnectNativeDebugToggleStacks")
 }

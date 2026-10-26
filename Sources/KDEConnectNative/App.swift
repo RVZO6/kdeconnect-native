@@ -146,6 +146,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await Snapshot.writePluginSheet(store: store, plugin: args[index + 1], to: args[index + 2])
             return
         }
+        if let index = args.firstIndex(of: "--stack-test"), index + 1 < args.count {
+            await SidebarTest.stackTest(outputDirectory: args[index + 1])
+            return
+        }
         if let index = args.firstIndex(of: "--swipe-test"), index + 1 < args.count {
             await SidebarTest.swipeTest(outputDirectory: args[index + 1])
             return
@@ -375,6 +379,34 @@ enum SidebarTest {
         shoot("swipe-right-after.png")
         print("cards after: \(store.selectedDevice?.notifications.count ?? 0) (demo keeps the data; the view hides dismissed cards)")
         print("cards before: \(before)")
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --stack-test <dir>` expands, then collapses the
+    /// notification stacks and saves window frames during each animation.
+    static func stackTest(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        shoot("stack-0-collapsed.png")
+        for phase in ["open", "close"] {
+            NotificationCenter.default.post(name: .debugToggleStacks, object: nil)
+            for ms in [60, 140, 240] {
+                try? await Task.sleep(for: .milliseconds(ms == 60 ? 60 : ms == 140 ? 80 : 100))
+                shoot("stack-\(phase)-\(ms)ms.png")
+            }
+            try? await Task.sleep(for: .milliseconds(600))
+            shoot("stack-\(phase)-end.png")
+        }
         NSApp.terminate(nil)
     }
 
