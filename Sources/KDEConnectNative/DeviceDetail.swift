@@ -21,28 +21,8 @@ struct DeviceDetail: View {
     @State private var settingsPlugin: PluginSheetItem?
 
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.sidebarInset) private var sidebarInset
-    @Environment(\.pageWidth) private var pageWidth
-    @State private var tabsWidth: CGFloat = 240
-
-    /// The left edge that toolbar items in the middle cannot pass: the window
-    /// buttons and the sidebar controls, plus the toolbar's item spacing.
-    private static let toolbarLeadingEdge: CGFloat = 186
-
-    /// Leading padding that moves the tabs from the window's centre to the
-    /// page column's centre. The toolbar centres the padded item on the
-    /// window, so a padding of the sidebar's width moves the tabs by half of
-    /// it, which is exactly the page centre. In a narrow window that item
-    /// would not fit beside the sidebar controls, and the toolbar would push
-    /// it by an amount that changes from layout to layout. So the padding is
-    /// capped where the item still fits: the tabs then sit as far towards
-    /// the page centre as they can, always at the same place.
-    private var tabsPadding: CGFloat {
-        guard sidebarInset > 0, pageWidth > 0 else { return 0 }
-        let windowWidth = sidebarInset + pageWidth
-        let fits = windowWidth - tabsWidth - 2 * Self.toolbarLeadingEdge
-        return max(0, min(sidebarInset, fits))
-    }
+    /// Puts the tabs in the vertical middle of the toolbar row.
+    private static let tabsTopInset: CGFloat = 7
 
     @State private var overviewScroll = ScrollPosition()
 
@@ -79,25 +59,17 @@ struct DeviceDetail: View {
         }
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
-        // The tabs sit in the window toolbar, centred, apart from the
-        // device header below it.
-        .toolbar {
+        // The tabs float over the toolbar row, centred on this page column
+        // and apart from the device header. In our own content, not in the
+        // toolbar, so the page moves them with the sidebar in one animation.
+        .overlay(alignment: .top) {
             if device.isPaired {
-                ToolbarItem(placement: .principal) {
-                    // The toolbar centres this item on the window. Leading
-                    // padding moves the tabs to the centre of the page
-                    // column (see tabsPadding). Padding, not an offset: an
-                    // offset draws the tabs outside the item, where clicks
-                    // do not reach them. The tabs draw their own glass, so
-                    // the toolbar's glass does not cover the padding.
-                    PagePicker(selection: selection)
-                        .padding(.horizontal, 3)
-                        .padding(.vertical, 1)
-                        .glassEffect(.regular, in: .capsule)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { tabsWidth = $0 }
-                        .padding(.leading, tabsPadding)
-                }
-                .sharedBackgroundVisibility(.hidden)
+                PagePicker(selection: selection)
+                    .padding(.horizontal, 3)
+                    .padding(.vertical, 1)
+                    .glassEffect(.regular, in: .capsule)
+                    .padding(.top, Self.tabsTopInset)
+                    .ignoresSafeArea(edges: .top)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in

@@ -9,8 +9,6 @@ struct MainWindow: View {
     @State private var sidebarShown = true
     /// The width the user dragged the sidebar to.
     @AppStorage("sidebarWidth") private var sidebarWidth: Double = 250
-    /// The page column's width, for centring toolbar items on it.
-    @State private var pageWidth: CGFloat = 0
 
     static let sidebarWidthRange: ClosedRange<Double> = 200...340
 
@@ -47,9 +45,6 @@ struct MainWindow: View {
                 .accessibilityHidden(!sidebarShown)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .environment(\.sidebarInset, sidebarShown ? sidebarWidth : 0)
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
-                .environment(\.pageWidth, pageWidth)
                 // Content runs up under the glass toolbar, as in the system apps.
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
@@ -328,12 +323,4 @@ private struct SidebarResizeHandle: View {
             )
             .accessibilityHidden(true)
     }
-}
-
-extension EnvironmentValues {
-    /// The width that the open sidebar takes from the window, so that
-    /// window-wide toolbar items can centre on the page instead.
-    @Entry var sidebarInset: Double = 0
-    /// The width of the page column to the right of the sidebar.
-    @Entry var pageWidth: CGFloat = 0
 }

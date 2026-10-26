@@ -195,6 +195,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await SidebarTest.enterTest(outputDirectory: args[index + 1])
             return
         }
+        if args.contains("--hit-test") {
+            await SidebarTest.hitTest()
+            return
+        }
         if args.contains("--tab-test") {
             await SidebarTest.tabTest()
             return
@@ -490,6 +494,27 @@ enum SidebarTest {
                 shot += 1
                 try? await Task.sleep(for: .milliseconds(35))
             }
+        }
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --hit-test` asks AppKit which view a click in the
+    /// toolbar row would reach at the left, middle and right of the page
+    /// column's centre, where the floating tabs are.
+    static func hitTest() async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+              let frame = window.contentView?.superview else { NSApp.terminate(nil); return }
+        let sidebar = UserDefaults.standard.object(forKey: "sidebarWidth") as? Double ?? 250
+        let pageCentre = sidebar + (window.frame.width - sidebar) / 2
+        let y = window.frame.height - 26  // middle of the toolbar row, from the bottom
+        for dx in [-80.0, 0, 80] {
+            let point = NSPoint(x: pageCentre + dx, y: y)
+            var chain: [String] = []
+            var view = frame.hitTest(frame.convert(point, from: nil))
+            while let v = view, chain.count < 4 { chain.append(String(describing: type(of: v))); view = v.superview }
+            print("toolbar row at x \(Int(pageCentre + dx)): " + chain.joined(separator: " < "))
         }
         NSApp.terminate(nil)
     }
