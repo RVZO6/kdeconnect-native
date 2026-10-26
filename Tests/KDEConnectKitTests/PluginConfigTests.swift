@@ -1,0 +1,56 @@
+import Foundation
+import Testing
+@testable import KDEConnectKit
+
+@Suite struct PluginConfigTests {
+    @Test func escapesLikeQSettings() {
+        #expect(IniFile.escape("/Users/me/Downloads") == "/Users/me/Downloads")
+        #expect(IniFile.escape("a,b") == "\"a,b\"")
+        #expect(IniFile.escape(" lead") == "\" lead\"")
+        #expect(IniFile.escape("say \"hi\"\\") == "say \\\"hi\\\"\\\\")
+        #expect(IniFile.escape("line\nbreak") == "line\\nbreak")
+        // A control character followed by a hex digit escapes the digit too.
+        #expect(IniFile.escape("\u{01}a") == "\\x1\\x61")
+    }
+
+    @Test func decodeReversesEncode() {
+        for s in ["plain", "a,b;c=d", " spaced ", "quote \" and \\ slash", "tab\tnew\nline", "\u{01}a", "ünïcödé", "@at"] {
+            #expect(IniFile.decode(IniFile.encode(.string(s))) == s)
+        }
+        #expect(IniFile.decode("@ByteArray({\\\"k\\\":1})") == "{\"k\":1}")
+    }
+
+    @Test func keepsOtherKeysAndSections() {
+        var ini = IniFile(text: "[General]\nkeep=1\nautoShare=false\n\n[Other]\nx=y\n")
+        ini.set("true", for: "autoShare", in: "General")
+        ini.set("50", for: "maxClipboardFileSizeMB", in: "General")
+        #expect(ini.text == "[General]\nkeep=1\nautoShare=true\nmaxClipboardFileSizeMB=50\n\n[Other]\nx=y\n")
+    }
+
+    @Test func writesAndReadsAFile() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let config = PluginConfig(deviceId: "dev", plugin: "kdeconnect_share", baseDirectory: dir)
+        try config.write(["autoShare": .bool(false), "incoming_path": .string("/tmp/a, b"), "max": .int(7)])
+        let text = try String(contentsOf: config.fileURL, encoding: .utf8)
+        #expect(text.contains("incoming_path=\"/tmp/a, b\""))
+        let values = config.values()
+        #expect(values["autoShare"] == "false")
+        #expect(values["incoming_path"] == "/tmp/a, b")
+        #expect(values["max"] == "7")
+    }
+
+    @Test func runCommandsRoundTrip() {
+        let commands = [RunCommand(id: "{1}", name: "Lock", command: "pmset displaysleepnow"),
+                        RunCommand(id: "{2}", name: "Say \"hi\", loud", command: "say hi")]
+        let json = RunCommand.encode(commands)
+        #expect(RunCommand.decode(IniFile.decode(IniFile.encode(.string(json)))) == commands)
+    }
+
+    @Test func signalPath() {
+        let signal = PluginConfig(deviceId: "abc_123", plugin: "kdeconnect_share").changedSignal
+        #expect(signal.path == "/kdeconnect/abc_123/kdeconnect_share")
+        #expect(signal.interface == "org.kde.kdeconnect.config")
+        #expect(signal.member == "configChanged")
+    }
+}

@@ -16,6 +16,11 @@ struct KDEConnectNativeApp: App {
         .defaultLaunchBehavior(.suppressed)
         .commands {
             CommandGroup(after: .newItem) {
+                Button("Pair Device…") {
+                    WindowOpener.shared.showMainWindow()
+                    store.isPairingSheetShown = true
+                }
+                .keyboardShortcut("n")
                 Button("Refresh Devices") { store.refreshNetwork() }
                     .keyboardShortcut("r")
             }
@@ -46,16 +51,26 @@ struct StatusIcon: View {
     var body: some View {
         Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
             .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onChange(of: store.pairingRequests.map(\.id)) { old, new in
+                // Ask at once when a device wants to pair, also without the window.
+                for id in new where !old.contains(id) {
+                    guard let device = store.pairingRequests.first(where: { $0.id == id }) else { continue }
+                    // A modal alert must not run inside a view update.
+                    Task { PairingPrompt.show(device: device, store: store) }
+                }
+            }
             .onChange(of: store.lastError) { _, error in
                 // The main window shows errors itself. Without it, actions
                 // from the menu or Settings must not fail silently.
                 guard let error, !WindowOpener.shared.isMainWindowVisible else { return }
-                let alert = NSAlert()
-                alert.messageText = "KDE Connect"
-                alert.informativeText = error
-                NSApp.activate()
-                alert.runModal()
-                store.clearError()
+                Task {
+                    let alert = NSAlert()
+                    alert.messageText = "KDE Connect"
+                    alert.informativeText = error
+                    NSApp.activate()
+                    alert.runModal()
+                    store.clearError()
+                }
             }
     }
 }
@@ -65,14 +80,32 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
-    var isMainWindowVisible = false
+    private var closeObserver: NSObjectProtocol?
+
+    var isMainWindowVisible: Bool { NSApp.windows.contains { Self.isMainWindow($0) && $0.isVisible } }
+
+    static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.identifier?.rawValue.hasPrefix(MainWindow.id) == true
+    }
 
     func showMainWindow() {
         // An accessory app must become a regular app to own a key window
-        // and a Dock icon. MainWindow switches back when it closes.
+        // and a Dock icon. It goes back to the menu bar when the window closes.
+        // Change the policy only here and on close: a change while the window
+        // is on screen makes AppKit lay the window out again.
         NSApp.setActivationPolicy(.regular)
         open?()
         NSApp.activate()
+        closeObserver = closeObserver ?? NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { notification in
+            // The observer runs on the main queue, so the window is safe to use there.
+            nonisolated(unsafe) let object = notification.object
+            MainActor.assumeIsolated {
+                guard let window = object as? NSWindow, Self.isMainWindow(window) else { return }
+                _ = NSApp.setActivationPolicy(.accessory)
+            }
+        }
     }
 }
 
@@ -94,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = CommandLine.arguments
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
             await Snapshot.write(store: store, to: args[index + 1])
+            return
+        }
+        if let index = args.firstIndex(of: "--sidebar-test"), index + 1 < args.count {
+            await SidebarTest.run(outputDirectory: args[index + 1])
             return
         }
         if !launchedAsLoginItem {
@@ -153,6 +190,35 @@ enum Snapshot {
             host.cacheDisplay(in: host.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
         }
+        NSApp.terminate(nil)
+    }
+}
+
+/// Debug aid: `--sidebar-test <dir>` opens the main window, toggles the
+/// sidebar quickly, and saves frames of the whole window (title bar included).
+@MainActor
+enum SidebarTest {
+    static func run(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(3))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+              let frame = window.contentView?.superview else { NSApp.terminate(nil); return }
+        var index = 0
+        func capture(_ label: String) {
+            guard let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            let name = String(format: "%02d-%@.png", index, label)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: outputDirectory).appendingPathComponent(name))
+            index += 1
+        }
+        capture("start")
+        for i in 0..<7 {
+            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: window)
+            try? await Task.sleep(for: .milliseconds(90))
+            capture("toggle\(i)")
+        }
+        try? await Task.sleep(for: .seconds(1.5))
+        capture("settled")
         NSApp.terminate(nil)
     }
 }

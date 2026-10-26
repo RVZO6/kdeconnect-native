@@ -29,6 +29,8 @@ public final class KDEConnectStore {
     public private(set) var customDevices: [String] = []
     /// The device that the main window shows.
     public var selectedDeviceId: String?
+    /// True while the main window shows the pairing sheet.
+    public var isPairingSheetShown = false
 
     public var autoStartDaemon: Bool {
         didSet { UserDefaults.standard.set(autoStartDaemon, forKey: Self.autoStartKey) }
@@ -359,6 +361,25 @@ public final class KDEConnectStore {
     public func pluginStates(for device: Device) async -> [String: Bool]? {
         guard let client else { return nil }
         return try? await client.pluginStates(device.id, plugins: device.supportedPlugins)
+    }
+
+    /// Writes plugin settings, then tells the daemon to read them again.
+    public func savePluginConfig(_ config: PluginConfig, _ changes: [String: PluginConfig.Value]) {
+        do {
+            try config.write(changes)
+        } catch {
+            lastError = "Could not save the plugin settings: \(error.localizedDescription)"
+            return
+        }
+        guard let client else {
+            lastError = "The settings are saved. KDE Connect uses them after its next start."
+            return
+        }
+        do {
+            try client.connection.send(config.changedSignal)
+        } catch {
+            lastError = "The settings are saved, but KDE Connect did not get the change: \(error)"
+        }
     }
 
     public func setPluginEnabled(deviceId: String, plugin: String, enabled: Bool) {

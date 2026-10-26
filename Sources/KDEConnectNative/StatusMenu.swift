@@ -24,6 +24,11 @@ struct StatusMenu: View {
         }
         Divider()
         Button("Open KDE Connect") { WindowOpener.shared.showMainWindow() }
+        Button("Pair Device…") {
+            WindowOpener.shared.showMainWindow()
+            store.isPairingSheetShown = true
+        }
+        .disabled(store.status != .connected)
         SettingsLink { Text("Settings…") }
             .keyboardShortcut(",")
         Divider()

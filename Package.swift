@@ -14,6 +14,7 @@ let package = Package(
         .executableTarget(name: "KDEConnectNative", dependencies: ["KDEConnectKit"]),
         .executableTarget(name: "dbus-probe", dependencies: ["DBusKit", "KDEConnectKit"]),
         .testTarget(name: "DBusKitTests", dependencies: ["DBusKit"]),
+        .testTarget(name: "KDEConnectKitTests", dependencies: ["KDEConnectKit"]),
     ],
     swiftLanguageModes: [.v6]
 )
