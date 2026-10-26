@@ -22,6 +22,7 @@ struct MainWindow: View {
         // Control and the Window menu.
         .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar(removing: .title)
+        .background(SidebarToggleAnchor())
         .sheet(isPresented: $store.isPairingSheetShown) {
             PairingSheet()
         }
@@ -126,8 +127,12 @@ private struct AddDeviceRow: View {
         Button {
             store.isPairingSheetShown = true
         } label: {
-            Label("Pair New Device…", systemImage: "plus")
-                .foregroundStyle(.secondary)
+            Label {
+                Text("New Device")
+            } icon: {
+                Image(systemName: "plus").imageScale(.small)
+            }
+            .foregroundStyle(.secondary)
         }
         .buttonStyle(.plain)
         .disabled(store.status != .connected)

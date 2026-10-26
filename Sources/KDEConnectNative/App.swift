@@ -138,6 +138,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await SidebarTest.captureWindow(to: args[index + 1])
             return
         }
+        if let index = args.firstIndex(of: "--plugin-snapshot"), index + 2 < args.count {
+            await Snapshot.writePluginSheet(store: store, plugin: args[index + 1], to: args[index + 2])
+            return
+        }
         if args.contains("--sidebar-test") {
             await SidebarTest.run()
             return
@@ -178,6 +182,27 @@ enum LoginItem {
         } else {
             try SMAppService.mainApp.unregister()
         }
+    }
+}
+
+extension Snapshot {
+    /// Debug aid: `--plugin-snapshot kdeconnect_clipboard out.png` renders a
+    /// plugin settings sheet for the first paired device.
+    static func writePluginSheet(store: KDEConnectStore, plugin: String, to path: String) async {
+        try? await Task.sleep(for: .seconds(3))
+        guard let device = store.pairedDevices.first else { NSApp.terminate(nil); return }
+        let host = NSHostingView(rootView: PluginSettingsSheet(device: device, plugin: plugin).environment(store))
+        host.frame.size = host.fittingSize
+        let window = NSWindow(contentRect: NSRect(origin: CGPoint(x: -10_000, y: -10_000), size: host.frame.size),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.orderBack(nil)
+        try? await Task.sleep(for: .seconds(1))
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+        NSApp.terminate(nil)
     }
 }
 
@@ -244,6 +269,21 @@ enum SidebarTest {
             }
             print(line)
         }
+        print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), NSTemporaryDirectory() + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        shoot("sidebar-open.png")
+        toggle()
+        try? await Task.sleep(for: .milliseconds(600))
+        shoot("sidebar-closed.png")
+        toggle()
+        try? await Task.sleep(for: .milliseconds(600))
+        print("captures in", NSTemporaryDirectory())
         await sample("single", for: .milliseconds(900), toggleAt: [0])
         await sample("back", for: .milliseconds(900), toggleAt: [0])
         await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
