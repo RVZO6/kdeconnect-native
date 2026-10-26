@@ -1,0 +1,417 @@
+{
+  "date": "2026-10-26",
+  "hardware": "Apple M4 Pro",
+  "swift": "6.4",
+  "build": "release",
+  "baseline": "129a294 (sequential optional reads)",
+  "candidate": "parallel optional reads",
+  "method": "Three paired runs, each with seven timed samples after one warm-up. The private-bus workload uses three independent NameHasOwner calls on an isolated bundled dbus-daemon. The delayed workload uses an artificial 2 ms delay per read. Neither accesses the user daemon or phone.",
+  "runs": {
+    "baseline": [
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            20.458,
+            20.416,
+            20.417,
+            20.417,
+            20.416,
+            20.417,
+            20.416
+          ],
+          "medianNanoseconds": 20.417,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            364.292,
+            332.042,
+            347.334,
+            360.541,
+            345.583,
+            346.709,
+            360.75
+          ],
+          "medianNanoseconds": 347.334,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            1089.916,
+            1101.625,
+            1086.25,
+            1094.375,
+            1178.625,
+            1113.375,
+            1095.333
+          ],
+          "medianNanoseconds": 1095.333,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            8974552.733333332,
+            8976538.866666667,
+            8929288.933333334,
+            8692655.533333333,
+            8708002.8,
+            8700502.8,
+            8898186.133333333
+          ],
+          "medianNanoseconds": 8898186.133333333,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            89070.96875,
+            83205.71875,
+            85079.4375,
+            83960.9375,
+            83564.453125,
+            84347.65625,
+            83458.328125
+          ],
+          "medianNanoseconds": 83960.9375,
+          "checksum": 42496
+        }
+      },
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            21.667,
+            20.916,
+            21.167,
+            20.875,
+            20.833,
+            20.833,
+            20.875
+          ],
+          "medianNanoseconds": 20.875,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            359.459,
+            340.334,
+            344.667,
+            352.583,
+            353.292,
+            353.041,
+            347.458
+          ],
+          "medianNanoseconds": 352.583,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            1085.291,
+            1070.625,
+            1080.833,
+            1305.167,
+            1230.292,
+            998.5,
+            1054.167
+          ],
+          "medianNanoseconds": 1080.833,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            8817500.0,
+            8860088.866666667,
+            8875072.2,
+            8715661.133333333,
+            8953852.8,
+            8845797.2,
+            8914083.333333334
+          ],
+          "medianNanoseconds": 8860088.866666667,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            86199.875,
+            86005.859375,
+            84885.421875,
+            85069.015625,
+            83514.96875,
+            84794.921875,
+            85681.0
+          ],
+          "medianNanoseconds": 85069.015625,
+          "checksum": 42496
+        }
+      },
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            28.167,
+            29.0,
+            29.167,
+            26.958,
+            20.417,
+            20.417,
+            20.459
+          ],
+          "medianNanoseconds": 26.958,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            379.0,
+            372.042,
+            354.666,
+            357.833,
+            352.041,
+            364.25,
+            351.083
+          ],
+          "medianNanoseconds": 357.833,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            1115.375,
+            1103.834,
+            1120.25,
+            1145.959,
+            1119.333,
+            1123.75,
+            1144.125
+          ],
+          "medianNanoseconds": 1120.25,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            8929988.933333334,
+            8862247.266666668,
+            8863161.066666666,
+            8868272.2,
+            8892133.333333334,
+            8563038.866666667,
+            9389102.8
+          ],
+          "medianNanoseconds": 8868272.2,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            83733.0625,
+            86576.828125,
+            86152.34375,
+            85317.0625,
+            86413.421875,
+            82802.078125,
+            90570.3125
+          ],
+          "medianNanoseconds": 86152.34375,
+          "checksum": 42496
+        }
+      }
+    ],
+    "parallel": [
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            21.833,
+            21.75,
+            21.708,
+            21.834,
+            21.75,
+            21.792,
+            21.75
+          ],
+          "medianNanoseconds": 21.75,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            375.833,
+            360.959,
+            366.292,
+            363.042,
+            375.917,
+            363.917,
+            377.125
+          ],
+          "medianNanoseconds": 366.292,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            4349.375,
+            4337.708,
+            4126.959,
+            3917.792,
+            3849.166,
+            3960.416,
+            3844.709
+          ],
+          "medianNanoseconds": 3960.416,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            2967066.6666666665,
+            2874127.8,
+            2875466.6666666665,
+            2982383.3333333335,
+            2932955.533333333,
+            2987950.0,
+            2983111.1333333333
+          ],
+          "medianNanoseconds": 2967066.6666666665,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            54438.15625,
+            52751.953125,
+            54038.40625,
+            55729.8125,
+            54832.671875,
+            53518.890625,
+            52791.015625
+          ],
+          "medianNanoseconds": 54038.40625,
+          "checksum": 42496
+        }
+      },
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            20.667,
+            20.667,
+            20.625,
+            20.959,
+            23.0,
+            23.041,
+            23.042
+          ],
+          "medianNanoseconds": 20.959,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            375.542,
+            375.541,
+            377.458,
+            380.792,
+            365.875,
+            380.833,
+            369.958
+          ],
+          "medianNanoseconds": 375.542,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            4359.458,
+            4384.375,
+            4026.084,
+            3846.667,
+            3764.375,
+            3939.125,
+            3821.916
+          ],
+          "medianNanoseconds": 3939.125,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            2970133.3333333335,
+            3024308.3333333335,
+            3008888.8666666667,
+            2878127.7333333334,
+            3014236.1333333333,
+            2949572.2,
+            2879475.0
+          ],
+          "medianNanoseconds": 2970133.3333333335,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            55556.0,
+            54934.890625,
+            53483.71875,
+            55227.859375,
+            53964.1875,
+            55893.890625,
+            52147.125
+          ],
+          "medianNanoseconds": 54934.890625,
+          "checksum": 42496
+        }
+      },
+      {
+        "none-immediate": {
+          "samplesNanoseconds": [
+            20.875,
+            20.208,
+            20.167,
+            20.208,
+            20.167,
+            20.208,
+            23.875
+          ],
+          "medianNanoseconds": 20.208,
+          "checksum": 0
+        },
+        "one-immediate": {
+          "samplesNanoseconds": [
+            341.125,
+            382.417,
+            373.709,
+            360.75,
+            365.417,
+            368.958,
+            358.417
+          ],
+          "medianNanoseconds": 365.417,
+          "checksum": 656000
+        },
+        "three-immediate": {
+          "samplesNanoseconds": [
+            4321.625,
+            4009.541,
+            3901.542,
+            3905.416,
+            3772.125,
+            3734.667,
+            3703.834
+          ],
+          "medianNanoseconds": 3901.542,
+          "checksum": 664000
+        },
+        "three-delayed": {
+          "samplesNanoseconds": [
+            2972188.8666666667,
+            2960925.0,
+            3072991.6666666665,
+            2913550.0,
+            3074622.2666666666,
+            3011291.6666666665,
+            3048263.8666666667
+          ],
+          "medianNanoseconds": 3011291.6666666665,
+          "checksum": 9960
+        },
+        "private-bus": {
+          "samplesNanoseconds": [
+            55148.4375,
+            66382.8125,
+            58300.125,
+            53449.875,
+            70430.984375,
+            54001.953125,
+            63651.6875
+          ],
+          "medianNanoseconds": 58300.125,
+          "checksum": 42496
+        }
+      }
+    ]
+  }
+}

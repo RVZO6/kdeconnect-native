@@ -62,6 +62,23 @@ struct DeviceDetailsTests {
         #expect(await read(allPlugins, using: negative).battery == nil)
     }
 
+    @Test func independentReadsStartTogether() async {
+        let gate = ThreeReadGate()
+        let details = await readDeviceDetails(id: "phone", plugins: allPlugins,
+            properties: { _, interface in
+                await gate.arrive()
+                if interface.hasSuffix(".battery") { return ["charge": .int32(82)] }
+                return ["cellularNetworkType": .string("5G")]
+            }, notifications: { _ in
+                await gate.arrive()
+                return [PhoneNotification(id: "2", properties: [:])]
+            })
+        #expect(await gate.allStartedBeforeRelease)
+        #expect(details.battery?.charge == 82)
+        #expect(details.cellular?.networkType == "5G")
+        #expect(details.notifications.map(\.id) == ["2"])
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["KDECONNECT_PERF"] == "1"))
     func detailsLatencyBenchmark() async {
         let workloads: [(String, Set<String>, Duration, Int)] = [
@@ -136,6 +153,39 @@ struct DeviceDetailsTests {
         }
         #expect(checksum == 64 * 8 * 83)
         print("device-details workload=private-bus samples-ns=\(samples) median-ns=\(samples.sorted()[3]) checksum=\(checksum)")
+    }
+}
+
+/// The timer is only a deadlock guard. The assertion checks whether all
+/// three operations reached the gate before any one of them was released.
+private actor ThreeReadGate {
+    private var pending: [CheckedContinuation<Void, Never>] = []
+    private(set) var allStartedBeforeRelease = false
+    private var released = false
+
+    func arrive() async {
+        if released { return }
+        await withCheckedContinuation { continuation in
+            pending.append(continuation)
+            if pending.count == 1 {
+                Task {
+                    try? await Task.sleep(for: .seconds(2))
+                    self.release()
+                }
+            }
+            if pending.count == 3 {
+                allStartedBeforeRelease = true
+                release()
+            }
+        }
+    }
+
+    private func release() {
+        guard !released else { return }
+        released = true
+        let continuations = pending
+        pending.removeAll()
+        for continuation in continuations { continuation.resume() }
     }
 }
 

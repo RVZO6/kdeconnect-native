@@ -55,6 +55,27 @@ The local-bus test starts a separate bundled `dbus-daemon`. It does not
 contact `kdeconnectd`, change its address file, or use personal device data.
 These read results are not end-to-end phone refresh measurements.
 
+### Device refresh: three optional plugins
+
+The battery, connectivity and notification reads run independently when at
+least two are enabled. With zero or one enabled plugin, no child tasks are
+created. The table shows the median of three runs; each run has seven timed
+samples after a warm-up. The baseline is the sequential implementation in
+`129a294`.
+
+| Workload | Sequential | Parallel | Interpretation |
+| --- | ---: | ---: | --- |
+| Zero reads, in memory | 20.9 ns | 21.0 ns | No meaningful change |
+| One read, in memory | 352.6 ns | 366.3 ns | 13.7 ns more |
+| Three reads, in memory | 1.10 µs | 3.94 µs | 2.84 µs more task overhead |
+| Three reads, 2 ms artificial delay each | 8.87 ms | 2.97 ms | 66.5% less elapsed time |
+| Three local private-bus calls | 85.1 µs | 54.9 µs | 35.4% less elapsed time |
+
+The private-bus case uses `NameHasOwner` as a transport proxy. It does not
+measure `kdeconnectd`, phone communication, or end-to-end UI refresh.
+The raw samples are in
+[Results/2026-10-26-device-details.json](Results/2026-10-26-device-details.json).
+
 Raw samples and environment details are in [Results/2026-10-26.json](Results/2026-10-26.json).
 
 ## Repeat the measurements
@@ -68,6 +89,7 @@ for run in 1 2 3; do
 done
 
 KDECONNECT_PERF=1 swift test -c release --filter ConcurrentReadTests
+KDECONNECT_PERF=1 swift test -c release --filter DeviceDetailsTests
 swift test
 swift test -c release
 ```
