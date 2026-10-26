@@ -128,9 +128,11 @@ private struct AddDeviceRow: View {
             } icon: {
                 Image(systemName: "plus").imageScale(.small)
             }
-            // Grey, like the text; the full label colour on hover. The icon
-            // gets the style itself, because the sidebar tints list icons.
-            .labelStyle(TintedIconLabelStyle(style: hovering ? .primary : .secondary))
+            // Grey, like the text; the normal text colour on hover. Fixed
+            // label colours, because the sidebar tints list icons and
+            // hierarchical styles with the accent colour.
+            .labelStyle(TintedIconLabelStyle(color: hovering ? Color(nsColor: .labelColor)
+                                                              : Color(nsColor: .secondaryLabelColor)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -141,15 +143,15 @@ private struct AddDeviceRow: View {
     }
 }
 
-/// A label whose icon uses the same style as its title.
+/// A label whose icon and title use one fixed colour.
 private struct TintedIconLabelStyle: LabelStyle {
-    let style: HierarchicalShapeStyle
+    let color: Color
 
     func makeBody(configuration: Configuration) -> some View {
         Label {
-            configuration.title.foregroundStyle(style)
+            configuration.title.foregroundStyle(color)
         } icon: {
-            configuration.icon.foregroundStyle(style)
+            configuration.icon.foregroundStyle(color)
         }
     }
 }
