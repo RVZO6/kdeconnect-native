@@ -6,22 +6,47 @@ struct MainWindow: View {
     static let id = "main"
 
     @Environment(KDEConnectStore.self) private var store
+    @State private var sidebarShown = true
+
+    static let sidebarWidth: CGFloat = 250
 
     var body: some View {
         let _ = UIBenchmark.recordUpdate("MainWindow")
         @Bindable var store = store
-        NavigationSplitView {
+        // Two columns of our own instead of NavigationSplitView: AppKit's
+        // split view animates the sidebar itself, lays the page out only at
+        // the end (so it jumps), and moves the sidebar's toolbar items into
+        // the overflow menu when it collapses. Here SwiftUI animates the
+        // sidebar width, so the page moves with it on every frame.
+        HStack(spacing: 0) {
             Sidebar(selection: $store.selectedDeviceId)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
-                // The sidebar's toolbar declares its own sidebar button, so
-                // that it comes first and the + follows it. With the system
-                // button, SwiftUI reorders the items on every toggle and
-                // they flash.
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
+                .frame(width: Self.sidebarWidth)
+                // The sidebar slides out to the left while its column shrinks.
+                .frame(width: sidebarShown ? Self.sidebarWidth : 0, alignment: .trailing)
+                .clipped()
+                // After the clip, so that the material also fills the strip
+                // under the toolbar, as a system sidebar does.
+                .background { SidebarMaterial().ignoresSafeArea() }
+                .overlay(alignment: .trailing) {
+                    Rectangle()
+                        .fill(Color(nsColor: .separatorColor))
+                        .frame(width: 1)
+                        .ignoresSafeArea()
+                        .opacity(sidebarShown ? 1 : 0)
+                }
+                .accessibilityHidden(!sidebarShown)
             detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // Content runs up under the glass toolbar, as in the system apps.
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        }
+        .toolbar {
+            // In the window's toolbar, not in a split column, so the
+            // buttons keep their place and never go to the overflow menu.
+            ToolbarItem(placement: .navigation) {
+                SidebarControls(shown: $sidebarShown)
+            }
+            .sharedBackgroundVisibility(.hidden)
         }
         // The device page shows the device name in its header, so the
         // toolbar does not repeat it. The window keeps a title for Mission
@@ -32,6 +57,9 @@ struct MainWindow: View {
         .frame(minWidth: 720, idealWidth: 900, maxWidth: 1000, minHeight: 480, idealHeight: 620, maxHeight: 780)
         .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar(removing: .title)
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebarRequest)) { _ in
+            SidebarAnimator.shared.toggle($sidebarShown)
+        }
         .sheet(isPresented: $store.isPairingSheetShown) {
             PairingSheet()
         }
@@ -77,28 +105,15 @@ private struct Sidebar: View {
             }
         }
         .listStyle(.sidebar)
-        .toolbar {
-            ToolbarItem {
-                Button("Toggle Sidebar", systemImage: "sidebar.left") {
-                    // The same action as the system button, so it goes
-                    // through SidebarToggleQueue.
-                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
-                }
-                .help("Show or hide the sidebar")
-            }
-            // Next to the sidebar button, like a "new" button in an app's sidebar.
-            ToolbarItem {
-                Button("New Device", systemImage: "plus") { store.isPairingSheetShown = true }
-                    .help("Pair a new device")
-                    .disabled(store.status != .connected)
-            }
-        }
         .confirmationDialog("Unpair \(unpairCandidate?.name ?? "")?", isPresented: unpairShown, presenting: unpairCandidate) { device in
             let id = device.id
             Button("Unpair", role: .destructive) { store.perform("Unpair") { try await $0.unpair(id) } }
         } message: { _ in
             Text("You must pair again before the devices can connect.")
         }
+        // The system's bottom edge effect draws a line only while the window
+        // is inactive. Our own bar draws one line in both states instead.
+        .scrollEdgeEffectHidden(true, for: .bottom)
         .safeAreaBar(edge: .bottom) {
             ThisMacBar()
         }
@@ -159,6 +174,14 @@ private struct ThisMacBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+        // The same material as the sidebar, so rows that scroll under the
+        // bar stay hidden, and a separator line above it.
+        .background { SidebarMaterial() }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(height: 1)
+        }
     }
 }
 
@@ -167,14 +190,16 @@ private struct DeviceRow: View {
 
     var body: some View {
         let _ = UIBenchmark.recordUpdate("DeviceRow")
-        Label {
+        // Not a Label: a Label aligns its icon to the first text line, which
+        // puts the tile above the middle of the two-line row.
+        HStack(alignment: .center, spacing: 8) {
+            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 24, muted: !device.isReachable)
             VStack(alignment: .leading, spacing: 1) {
                 Text(device.name).lineLimit(1)
                 Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
-        } icon: {
-            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 24, muted: !device.isReachable)
         }
+        .padding(.vertical, 2)
         .tag(device.id)
     }
 
@@ -249,4 +274,17 @@ private struct ServiceUnavailableView: View {
         case .notInstalled: "This app uses the service from KDE Connect.app. Install it in the Applications folder."
         }
     }
+}
+
+/// The system sidebar material behind our own sidebar column.
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

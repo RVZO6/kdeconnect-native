@@ -61,7 +61,7 @@ struct DeviceDetail: View {
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
         .safeAreaBar(edge: .top) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
                 header
                 if device.isPaired, device.isReachable {
                     actionsBar.frame(maxWidth: .infinity)
@@ -80,8 +80,7 @@ struct DeviceDetail: View {
             .padding(.horizontal, 11)
             .frame(maxWidth: 704)
             .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
+            .padding(.bottom, 8)
             .frame(maxWidth: .infinity)
             // The system draws a hairline under the bar. This one pixel, on
             // top of it in both states, makes the line clearer and keeps it
@@ -122,7 +121,7 @@ struct DeviceDetail: View {
 
     private var header: some View {
         HStack(spacing: 16) {
-            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 48, muted: !device.isReachable)
+            IconTile(symbol: device.kind.symbol, color: device.kind.tint, size: 44, muted: !device.isReachable)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(device.name).font(.title.weight(.semibold)).lineLimit(1)
@@ -139,7 +138,7 @@ struct DeviceDetail: View {
                     .help(battery.isCharging ? "Charging" : "On battery")
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
     }
 
     private var statusLine: String {

@@ -286,6 +286,8 @@ private struct NotificationCard: View {
                             Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
                         }
                     }
+                    // Highlight and copy the text with the pointer.
+                    .textSelection(.enabled)
                     Spacer(minLength: 8)
                     if canReply {
                         NotificationReplyButton(hover: hover, replying: $replying)
@@ -313,6 +315,11 @@ private struct NotificationCard: View {
         .onHover { hover.isHovering = $0 }
         .modifier(StackSwipe(enabled: swipeEnabled && notification.dismissable, onSwipe: dismiss))
         .contextMenu {
+            Button("Copy", systemImage: "doc.on.doc") {
+                let text = [notification.title, notification.text].filter { !$0.isEmpty }.joined(separator: "\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
             if canReply {
                 Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
             }
