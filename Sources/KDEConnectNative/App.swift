@@ -303,7 +303,8 @@ enum SidebarTest {
             return
         }
         // Smaller than the maximum, where the user saw the window jump.
-        window.setFrame(NSRect(x: 200, y: 200, width: 820, height: 600), display: true)
+        let width = Double(ProcessInfo.processInfo.environment["KDCN_TEST_WIDTH"] ?? "") ?? 820
+        window.setFrame(NSRect(x: 200, y: 200, width: width, height: 600), display: true)
         try? await Task.sleep(for: .milliseconds(400))
         func toggle() { NotificationCenter.default.post(name: .toggleSidebarRequest, object: nil) }
         print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
