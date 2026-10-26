@@ -9,6 +9,8 @@ struct NotificationCards: View {
     let device: Device
     /// Cards that flew off. They stay hidden until the phone confirms.
     @State private var dismissed: Set<String> = []
+    /// Apps whose group is open. A group of more than one starts as a stack.
+    @State private var expanded: Set<String> = []
 
     /// Notifications grouped by app. The app with the newest notification
     /// comes first; inside a group, the newest is on top.
@@ -35,33 +37,99 @@ struct NotificationCards: View {
                     .padding(.vertical, 6)
             }
             ForEach(groups, id: \.app) { group in
+                let isOpen = group.items.count == 1 || expanded.contains(group.app)
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(group.app).font(.headline)
-                        Text("\(group.items.count)")
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if group.items.contains(where: \.dismissable) {
-                            Button("Clear") { clear(group.items) }
-                                .buttonStyle(.glass)
-                                .controlSize(.small)
-                                .help("Dismiss all \(group.app) notifications on the device")
+                    header(group, isOpen: isOpen)
+                    if isOpen {
+                        ForEach(group.items) { notification in
+                            NotificationCard(deviceId: device.id, notification: notification,
+                                             showsAppName: false) {
+                                withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(notification.id) }
+                            }
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
                         }
-                    }
-                    .padding(.horizontal, 11)
-                    ForEach(group.items) { notification in
-                        NotificationCard(deviceId: device.id, notification: notification,
-                                         showsAppName: false) {
-                            withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(notification.id) }
-                        }
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    } else {
+                        stack(group)
                     }
                 }
             }
         }
         .onChange(of: device.notifications.map(\.id)) { _, ids in
             dismissed.formIntersection(ids)
+        }
+    }
+
+    private func header(_ group: (app: String, items: [PhoneNotification]), isOpen: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if group.items.count > 1 {
+                Button {
+                    toggle(group.app)
+                } label: {
+                    // The chevron follows the count, so that every app name
+                    // starts at the same edge.
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(group.app).font(.headline)
+                        Text("\(group.items.count)")
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(isOpen ? "Collapse" : "Expand")
+            } else {
+                Text(group.app).font(.headline)
+            }
+            Spacer()
+            if group.items.contains(where: \.dismissable) {
+                Button("Clear") { clear(group.items) }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .help("Dismiss all \(group.app) notifications on the device")
+            }
+        }
+        .padding(.horizontal, 11)
+    }
+
+    /// A collapsed group: the newest card in front, the edges of two more
+    /// behind it. Click to open; swipe it off to clear the whole group.
+    private func stack(_ group: (app: String, items: [PhoneNotification])) -> some View {
+        let first = group.items[0]
+        return Button {
+            toggle(group.app)
+        } label: {
+            NotificationSummary(notification: first, more: group.items.count - 1)
+        }
+        .buttonStyle(.plain)
+        .shadow(color: .black.opacity(0.08), radius: 1.5, y: 1)
+        .padding(.bottom, group.items.count > 2 ? 12 : 6)
+        .background(alignment: .bottom) {
+            // The edges of the cards behind, each a little darker and narrower.
+            ZStack(alignment: .bottom) {
+                if group.items.count > 2 {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.primary.opacity(0.05))
+                        .padding(.horizontal, 24)
+                        .frame(height: 40)
+                }
+                RoundedRectangle(cornerRadius: 13)
+                    .fill(Color.primary.opacity(0.08))
+                    .padding(.horizontal, 12)
+                    .frame(height: 40)
+                    .padding(.bottom, group.items.count > 2 ? 6 : 0)
+            }
+        }
+        .swipeToDismiss(enabled: group.items.contains(where: \.dismissable)) { clear(group.items) }
+        .help("Show all \(group.items.count) notifications")
+    }
+
+    private func toggle(_ app: String) {
+        withAnimation(.snappy(duration: 0.25)) {
+            if expanded.contains(app) { expanded.remove(app) } else { expanded.insert(app) }
         }
     }
 
@@ -73,6 +141,28 @@ struct NotificationCards: View {
         store.perform("Clear notifications") { client in
             for id in ids { try await client.dismissNotification(deviceId: deviceId, notificationId: id) }
         }
+    }
+}
+
+/// The front card of a collapsed stack.
+private struct NotificationSummary: View {
+    let notification: PhoneNotification
+    let more: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if !notification.title.isEmpty {
+                Text(notification.title).fontWeight(.medium)
+            }
+            if !notification.text.isEmpty {
+                Text(notification.text).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Text("\(more) more").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+        .contentShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 

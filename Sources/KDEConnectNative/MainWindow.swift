@@ -63,14 +63,18 @@ private struct Sidebar: View {
             ForEach(groups, id: \.title) { group in
                 Section(group.title) {
                     ForEach(group.devices) { row($0) }
-                    // Like the "+" after the last tab: it sits right under
-                    // the last device, not in a section of its own.
-                    if group.title == groups.last?.title { AddDeviceRow() }
                 }
             }
-            if groups.isEmpty { AddDeviceRow() }
         }
         .listStyle(.sidebar)
+        .toolbar {
+            // Next to the sidebar button, like a "new" button in an app's sidebar.
+            ToolbarItem {
+                Button("New Device", systemImage: "plus") { store.isPairingSheetShown = true }
+                    .help("Pair a new device")
+                    .disabled(store.status != .connected)
+            }
+        }
         .confirmationDialog("Unpair \(unpairCandidate?.name ?? "")?", isPresented: unpairShown, presenting: unpairCandidate) { device in
             let id = device.id
             Button("Unpair", role: .destructive) { store.perform("Unpair") { try await $0.unpair(id) } }
@@ -111,56 +115,6 @@ private struct Sidebar: View {
 
     private var unpairShown: Binding<Bool> {
         Binding(get: { unpairCandidate != nil }, set: { if !$0 { unpairCandidate = nil } })
-    }
-}
-
-/// The last row of the device list. It starts pairing a new device.
-private struct AddDeviceRow: View {
-    @Environment(KDEConnectStore.self) private var store
-    @State private var hovering = false
-
-    var body: some View {
-        Button {
-            store.isPairingSheetShown = true
-        } label: {
-            Label {
-                Text("New Device")
-            } icon: {
-                Image(systemName: "plus").imageScale(.small)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 9)
-            // A line that sets the add row apart from the devices above it.
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(Color(nsColor: .separatorColor))
-                    .frame(height: 1)
-            }
-            // Grey, like the text; the normal text colour on hover. Fixed
-            // label colours, because the sidebar tints list icons and
-            // hierarchical styles with the accent colour.
-            .labelStyle(TintedIconLabelStyle(color: hovering ? Color(nsColor: .labelColor)
-                                                              : Color(nsColor: .secondaryLabelColor)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
-        .disabled(store.status != .connected)
-        .help("Pair a new device")
-    }
-}
-
-/// A label whose icon and title use one fixed colour.
-private struct TintedIconLabelStyle: LabelStyle {
-    let color: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        Label {
-            configuration.title.foregroundStyle(color)
-        } icon: {
-            configuration.icon.foregroundStyle(color)
-        }
     }
 }
 
