@@ -191,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await SidebarTest.swipeTest(outputDirectory: args[index + 1])
             return
         }
+        if let index = args.firstIndex(of: "--enter-test"), index + 1 < args.count {
+            await SidebarTest.enterTest(outputDirectory: args[index + 1])
+            return
+        }
         if args.contains("--tab-test") {
             await SidebarTest.tabTest()
             return
@@ -459,6 +463,32 @@ enum SidebarTest {
             }
             try? await Task.sleep(for: .milliseconds(600))
             shoot("stack-\(phase)-end.png")
+        }
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --enter-test <dir>` adds a notification to an
+    /// existing app group, then one for a new app, and saves fast frames of
+    /// the page during each entry.
+    static func enterTest(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+              let frameView = window.contentView?.superview, let store = WindowOpener.shared.store else {
+            NSApp.terminate(nil); return
+        }
+        var shot = 0
+        for (app, title) in [("Messages", "Sam"), ("Weather", "Rain at 5 pm")] {
+            store.addDemoNotification(app: app, title: title, text: "A new notification for the enter animation.")
+            for _ in 0..<12 {
+                if let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) {
+                    frameView.cacheDisplay(in: frameView.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?
+                        .write(to: URL(fileURLWithPath: String(format: "%@/e%02d.png", outputDirectory, shot)))
+                }
+                shot += 1
+                try? await Task.sleep(for: .milliseconds(35))
+            }
         }
         NSApp.terminate(nil)
     }

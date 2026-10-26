@@ -62,15 +62,17 @@ struct DeviceDetail: View {
         .toolbar {
             if device.isPaired {
                 ToolbarItem(placement: .principal) {
-                    // The toolbar centres this item on the window. Moving it
-                    // by half the sidebar's width puts it in the centre of
-                    // the page column. It draws its own glass, because the
-                    // toolbar's glass would stay at the unmoved position.
+                    // The toolbar centres this item on the window. Leading
+                    // padding as wide as the sidebar puts the tabs in the
+                    // centre of the page column. Padding, not an offset: an
+                    // offset draws the tabs outside the item's frame, where
+                    // clicks do not reach them. The tabs draw their own
+                    // glass, so the toolbar's glass does not cover the padding.
                     PagePicker(selection: selection)
                         .padding(.horizontal, 3)
                         .padding(.vertical, 1)
                         .glassEffect(.regular, in: .capsule)
-                        .offset(x: sidebarInset / 2)
+                        .padding(.leading, sidebarInset)
                 }
                 .sharedBackgroundVisibility(.hidden)
             }

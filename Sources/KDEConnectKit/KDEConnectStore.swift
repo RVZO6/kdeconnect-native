@@ -350,6 +350,17 @@ public final class KDEConnectStore {
     /// True in demo mode, where daemon calls do nothing.
     @ObservationIgnored private var isDemo = false
 
+    /// Debug aid, demo mode only: a new notification arrives on the
+    /// selected device, at the top of its list.
+    public func addDemoNotification(app: String, title: String, text: String) {
+        guard isDemo, let index = devices.firstIndex(where: { $0.id == selectedDeviceId }) else { return }
+        let next = (devices[index].notifications.compactMap { Int($0.id) }.max() ?? 0) + 1
+        let notification = PhoneNotification(id: String(next), properties: [
+            "appName": .string(app), "title": .string(title), "text": .string(text), "dismissable": .bool(true),
+        ])
+        devices[index].notifications.insert(notification, at: 0)
+    }
+
     /// Debug aid: fills the store with a sample connected phone, without a
     /// daemon, so that the UI can be checked. Do not call `start()` as well.
     public func showDemo(notificationCount: Int? = nil, appCount: Int = 20, replyEvery: Int = 1) {

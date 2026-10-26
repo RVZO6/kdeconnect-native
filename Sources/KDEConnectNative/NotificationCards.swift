@@ -56,8 +56,12 @@ struct NotificationCards: View, Equatable {
                         withAnimation(.snappy(duration: 0.25)) { _ = dismissed.insert(id) }
                     },
                     onClear: { clear(group.items) })
+                .transition(NotificationEnter.transition)
             }
         }
+        // A new notification slides in; the cards below make room. The
+        // first appearance does not animate, only later changes.
+        .animation(NotificationEnter.animation, value: notifications.map(\.id))
         .onChange(of: notifications.map(\.id)) { _, ids in
             dismissed.formIntersection(ids)
         }
@@ -140,11 +144,11 @@ private struct NotificationGroup: View {
                 .help("Show all \(items.count) notifications")
                 .allowsHitTesting(isStacked && index == 0)
         }
+        .transition(NotificationEnter.transition)
         // Outermost, so that the stack layout draws the newest card on top.
         .zIndex(Double(-index))
     }
 
-    /// The app's first letter on a tile in the app's own colour.
     /// The phone's icon for the app on a neutral tile, or the first letter
     /// of the app name when the phone sent no icon. The phone does not send
     /// an app colour, so the tile has none.
@@ -503,5 +507,18 @@ private enum NotificationIconCache {
             if abs(c.0 - f.0) + abs(c.1 - f.1) + abs(c.2 - f.2) > 48 { return false }
         }
         return true
+    }
+}
+
+/// How a new notification or app group enters: it slides down from the
+/// top while it fades in and grows a little, like a banner.
+enum NotificationEnter {
+    static let animation = Animation.spring(response: 0.42, dampingFraction: 0.85)
+    static var transition: AnyTransition {
+        .asymmetric(
+        insertion: .move(edge: .top)
+            .combined(with: .scale(scale: 0.94, anchor: .top))
+            .combined(with: .opacity),
+        removal: .opacity.combined(with: .scale(scale: 0.96)))
     }
 }
