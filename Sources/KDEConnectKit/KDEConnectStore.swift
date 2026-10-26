@@ -232,9 +232,10 @@ public final class KDEConnectStore {
         // Pressing the button many times must not queue many restarts.
         guard !restartQueued else { return }
         restartQueued = true
+        // The flag stays set while the restart waits and while it runs.
         await serialized { store in
-            store.restartQueued = false
             await store.restartStep()
+            store.restartQueued = false
         }
     }
 
