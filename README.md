@@ -9,7 +9,7 @@ I built this because other alternatives (like [KonnectMac](https://github.com/ar
 It may be buggy — I vibe coded this in a few hours — and I may not maintain this.
 
 CLANKER TEXT STARTS HERE
-VVVV
+↓↓↓↓↓↓↓
 
 ---
 
