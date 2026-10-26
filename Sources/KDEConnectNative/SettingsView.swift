@@ -17,6 +17,7 @@ private struct GeneralSettings: View {
     @Environment(KDEConnectStore.self) private var store
     @State private var name = ""
     @State private var launchAtLogin = LoginItem.isEnabled
+    @AppStorage("keepWindowOnTop") private var keepWindowOnTop = true
     @State private var loginError: String?
 
     var body: some View {
@@ -44,8 +45,9 @@ private struct GeneralSettings: View {
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
                 }
+                Toggle("Keep window on top", isOn: $keepWindowOnTop)
             } footer: {
-                Text("At login the app starts in the menu bar only.")
+                Text("At login the app starts in the menu bar only. On top, the window stays above other apps' windows.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

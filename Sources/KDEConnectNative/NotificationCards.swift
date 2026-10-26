@@ -144,6 +144,20 @@ private struct NotificationGroup: View {
         .zIndex(Double(-index))
     }
 
+    /// The app's first letter on a tile in the app's own colour.
+    private var appTile: some View {
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(appTint(for: app).gradient)
+            .frame(width: 20, height: 20)
+            .overlay {
+                Text(app.prefix(1).uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            .accessibilityHidden(true)
+    }
+
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             if items.count > 1 {
@@ -153,6 +167,7 @@ private struct NotificationGroup: View {
                     // The chevron follows the count, so that every app name
                     // starts at the same edge.
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        appTile
                         Text(app).font(.headline)
                         Text("\(items.count)")
                             .font(.subheadline.monospacedDigit())
@@ -167,7 +182,10 @@ private struct NotificationGroup: View {
                 .buttonStyle(.plain)
                 .help(isExpanded ? "Collapse" : "Expand")
             } else {
-                Text(app).font(.headline)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    appTile
+                    Text(app).font(.headline)
+                }
             }
             Spacer()
             if items.contains(where: \.dismissable) {
