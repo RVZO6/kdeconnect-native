@@ -278,6 +278,19 @@ enum SidebarTest {
             print(line)
         }
         print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
+        // Logs every toolbar item that is added or removed while the test runs.
+        nonisolated(unsafe) var changes: [String] = []
+        let start = ContinuousClock.now
+        for name in [NSToolbar.willAddItemNotification, NSToolbar.didRemoveItemNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window.toolbar, queue: nil) { n in
+                nonisolated(unsafe) let note = n
+                MainActor.assumeIsolated {
+                    let id = (note.userInfo?["item"] as? NSToolbarItem)?.itemIdentifier.rawValue ?? "?"
+                    let sign = note.name == NSToolbar.willAddItemNotification ? "+" : "-"
+                    changes.append("\(sign)\(id.suffix(14)) @\(Int((ContinuousClock.now - start) / .milliseconds(1)))ms")
+                }
+            }
+        }
         func shoot(_ name: String) {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -295,6 +308,7 @@ enum SidebarTest {
         await sample("single", for: .milliseconds(900), toggleAt: [0])
         await sample("back", for: .milliseconds(900), toggleAt: [0])
         await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
+        print("toolbar changes during the test:", changes.isEmpty ? ["none"] : changes)
         NSApp.terminate(nil)
     }
 

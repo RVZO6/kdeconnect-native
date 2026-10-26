@@ -12,6 +12,11 @@ struct MainWindow: View {
         NavigationSplitView {
             Sidebar(selection: $store.selectedDeviceId)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
+                // The sidebar's toolbar declares its own sidebar button, so
+                // that it comes first and the + follows it. With the system
+                // button, SwiftUI reorders the items on every toggle and
+                // they flash.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 // Content runs up under the glass toolbar, as in the system apps.
@@ -22,7 +27,6 @@ struct MainWindow: View {
         // Control and the Window menu.
         .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar(removing: .title)
-        .background(SidebarToggleAnchor())
         .sheet(isPresented: $store.isPairingSheetShown) {
             PairingSheet()
         }
@@ -68,6 +72,14 @@ private struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .toolbar {
+            ToolbarItem {
+                Button("Toggle Sidebar", systemImage: "sidebar.left") {
+                    // The same action as the system button, so it goes
+                    // through SidebarToggleQueue.
+                    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+                }
+                .help("Show or hide the sidebar")
+            }
             // Next to the sidebar button, like a "new" button in an app's sidebar.
             ToolbarItem {
                 Button("New Device", systemImage: "plus") { store.isPairingSheetShown = true }
