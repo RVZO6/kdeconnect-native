@@ -19,17 +19,18 @@ struct MainWindow: View {
                 // show under the toolbar, as in the system apps.
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
-        .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
+        .navigationTitle(title)
+        // The title is drawn by the toolbar item below, so that the refresh
+        // button can sit right beside it.
+        .toolbar(removing: .title)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Pair Device…", systemImage: "plus") { store.isPairingSheetShown = true }
-                    .help("Pair a new device")
-                    .disabled(store.status != .connected)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button("Refresh", systemImage: "arrow.clockwise") { store.refreshNetwork() }
-                    .help("Search for devices on all networks again")
-                    .disabled(store.status != .connected)
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    RefreshButton()
+                }
             }
         }
         .sheet(isPresented: $store.isPairingSheetShown) {
@@ -41,6 +42,8 @@ struct MainWindow: View {
             Text(store.lastError ?? "")
         }
     }
+
+    private var title: String { store.selectedDevice?.name ?? "KDE Connect" }
 
     @ViewBuilder
     private var detail: some View {
@@ -91,6 +94,13 @@ private struct Sidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .toolbar {
+            ToolbarItem {
+                Button("Pair Device…", systemImage: "plus") { store.isPairingSheetShown = true }
+                    .help("Pair a new device")
+                    .disabled(store.status != .connected)
+            }
+        }
         .overlay {
             if store.status == .connected && store.devices.isEmpty {
                 ContentUnavailableView {
@@ -198,5 +208,22 @@ private struct ServiceUnavailableView: View {
             store.autoStartDaemon ? "The service will start again in a moment." : "Automatic start is off in Settings."
         case .notInstalled: "This app uses the service from KDE Connect.app. Install it in the Applications folder."
         }
+    }
+}
+
+/// Searches the networks again. The arrow spins while the search runs.
+private struct RefreshButton: View {
+    @Environment(KDEConnectStore.self) private var store
+
+    var body: some View {
+        Button {
+            store.refreshNetwork()
+        } label: {
+            Label("Refresh", systemImage: "arrow.clockwise")
+                .symbolEffect(.rotate.clockwise.byLayer, options: .repeat(.continuous), isActive: store.isRefreshing)
+        }
+        .labelStyle(.iconOnly)
+        .help("Search for devices on all networks again")
+        .disabled(store.status != .connected)
     }
 }

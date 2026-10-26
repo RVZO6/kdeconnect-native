@@ -115,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchedAsLoginItem = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        SidebarToggleQueue.install()
         let event = NSAppleEventManager.shared().currentAppleEvent
         launchedAsLoginItem = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
@@ -130,8 +131,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await Snapshot.write(store: store, to: args[index + 1])
             return
         }
-        if let index = args.firstIndex(of: "--sidebar-test"), index + 1 < args.count {
-            await SidebarTest.run(outputDirectory: args[index + 1])
+        if let index = args.firstIndex(of: "--window-snapshot"), index + 1 < args.count {
+            await SidebarTest.captureWindow(to: args[index + 1])
+            return
+        }
+        if args.contains("--sidebar-test") {
+            await SidebarTest.run()
             return
         }
         if !launchedAsLoginItem {
@@ -195,31 +200,70 @@ enum Snapshot {
     }
 }
 
-/// Debug aid: `--sidebar-test <dir>` opens the main window, toggles the
-/// sidebar quickly, and saves frames of the whole window (title bar included).
+/// Debug aid: `--sidebar-test` opens the main window, toggles the sidebar,
+/// and prints the sidebar width over time: first for one toggle, then for a
+/// burst of fast toggles.
 @MainActor
 enum SidebarTest {
-    static func run(outputDirectory: String) async {
+    static func run() async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(3))
         guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
-              let frame = window.contentView?.superview else { NSApp.terminate(nil); return }
-        var index = 0
-        func capture(_ label: String) {
-            guard let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
-            frame.cacheDisplay(in: frame.bounds, to: rep)
-            let name = String(format: "%02d-%@.png", index, label)
-            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: outputDirectory).appendingPathComponent(name))
-            index += 1
+              let split = findSplitView(in: window.contentView) else {
+            print("no split view")
+            NSApp.terminate(nil)
+            return
         }
-        capture("start")
-        for i in 0..<7 {
-            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: window)
-            try? await Task.sleep(for: .milliseconds(90))
-            capture("toggle\(i)")
+        // The x-position of the detail column: the sidebar's visible width.
+        func width() -> String {
+            let x = split.arrangedSubviews.count > 1 ? Int(split.arrangedSubviews[1].frame.minX) : -1
+            let collapsed = (split.delegate as? NSSplitViewController)?.splitViewItems.first?.isCollapsed
+            return "\(x)\(collapsed == true ? "c" : "")"
         }
-        try? await Task.sleep(for: .seconds(1.5))
-        capture("settled")
+        let controller = split.delegate as? NSSplitViewController
+        print("controller:", controller.map { String(describing: type(of: $0)) } ?? "none", "key:", window.isKeyWindow)
+        func toggle() { controller?.toggleSidebar(nil) }
+        func sample(_ label: String, for duration: Duration, toggleAt times: [Int] = []) async {
+            var line = "\(label):"
+            let start = ContinuousClock.now
+            var tick = 0
+            var toggles = times
+            while ContinuousClock.now - start < duration {
+                let ms = tick * 25
+                while let next = toggles.first, next <= ms {
+                    toggles.removeFirst()
+                    toggle()
+                    line += " |T"
+                }
+                line += " \(width())"
+                tick += 1
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            print(line)
+        }
+        await sample("single", for: .milliseconds(900), toggleAt: [0])
+        await sample("back", for: .milliseconds(900), toggleAt: [0])
+        await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
         NSApp.terminate(nil)
+    }
+
+    /// Opens the main window and saves an image of it, title bar included.
+    static func captureWindow(to path: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(3))
+        if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+           let frame = window.contentView?.superview,
+           let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+        NSApp.terminate(nil)
+    }
+
+    private static func findSplitView(in view: NSView?) -> NSSplitView? {
+        guard let view else { return nil }
+        if let split = view as? NSSplitView { return split }
+        for sub in view.subviews { if let found = findSplitView(in: sub) { return found } }
+        return nil
     }
 }

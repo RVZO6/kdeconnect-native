@@ -329,9 +329,25 @@ public final class KDEConnectStore {
 
     public var selectedDevice: Device? { devices.first { $0.id == selectedDeviceId } }
 
-    /// Asks the daemon to announce itself again on every network.
+    /// True while a network search runs, for the spinning refresh arrow.
+    public private(set) var isRefreshing = false
+
+    /// Asks the daemon to announce itself again on every network. Devices
+    /// answer over the next moments, so the search counts as running for a
+    /// short time after the call returns.
     public func refreshNetwork() {
-        perform("Refresh") { try await $0.forceOnNetworkChange() }
+        guard let client, !isRefreshing else { return }
+        isRefreshing = true
+        Task {
+            do {
+                try await client.forceOnNetworkChange()
+            } catch {
+                lastError = "Refresh failed: \(error)"
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            scheduleRefresh()
+            isRefreshing = false
+        }
     }
 
     public func setAnnouncedName(_ name: String) {
