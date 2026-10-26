@@ -18,6 +18,8 @@ import Testing
             #expect(IniFile.decode(IniFile.encode(.string(s))) == s)
         }
         #expect(IniFile.decode("@ByteArray({\\\"k\\\":1})") == "{\"k\":1}")
+        // Byte arrays hold UTF-8 bytes, written one escape per byte.
+        #expect(IniFile.decode("@ByteArray(Caf\\xc3\\xa9)") == "Café")
     }
 
     @Test func keepsOtherKeysAndSections() {

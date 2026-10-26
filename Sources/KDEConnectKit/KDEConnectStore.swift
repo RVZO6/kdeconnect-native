@@ -325,6 +325,7 @@ public final class KDEConnectStore {
     }
 
     public func clearError() { lastError = nil }
+    public func reportError(_ message: String) { lastError = message }
 
     public var selectedDevice: Device? { devices.first { $0.id == selectedDeviceId } }
 

@@ -97,11 +97,25 @@ private struct CandidateRow: View {
             Label(device.name, systemImage: device.kind.symbol)
             Spacer()
             if device.isPairRequestedByPeer {
+                if !device.verificationKey.isEmpty {
+                    Text("Key: \(device.verificationKey)")
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .help("Make sure that the other device shows the same key")
+                }
                 Button("Reject") { store.perform("Reject pairing") { try await $0.cancelPairing(id) } }
                 Button("Accept") { store.perform("Accept pairing") { try await $0.acceptPairing(id) } }
                     .buttonStyle(.borderedProminent)
             } else if device.isPairRequested {
-                Text("Confirm on the device…").foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("Confirm on the device").foregroundStyle(.secondary)
+                    if !device.verificationKey.isEmpty {
+                        Text("Key: \(device.verificationKey)")
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                            .help("Make sure that the other device shows the same key")
+                    }
+                }
                 Button("Cancel") { store.perform("Cancel pairing") { try await $0.cancelPairing(id) } }
             } else {
                 Button("Pair") { store.perform("Pair") { try await $0.requestPairing(id) } }
@@ -148,7 +162,20 @@ struct LocalAddress {
 /// The alert for an incoming pairing request.
 @MainActor
 enum PairingPrompt {
+    /// The request that the open alert is about.
+    private static var current: (id: String, key: String)?
+
+    /// Closes the alert when its request is gone (cancelled or timed out).
+    static func requestsChanged(_ requests: [Device]) {
+        guard let current, !requests.contains(where: { $0.id == current.id && $0.verificationKey == current.key })
+        else { return }
+        NSApp.abortModal()
+    }
+
     static func show(device: Device, store: KDEConnectStore) {
+        guard current == nil else { return }
+        current = (device.id, device.verificationKey)
+        defer { current = nil }
         let alert = NSAlert()
         alert.messageText = "\(device.name) wants to pair with this Mac"
         alert.informativeText = device.verificationKey.isEmpty
@@ -158,10 +185,20 @@ enum PairingPrompt {
         alert.addButton(withTitle: "Reject")
         NSApp.activate()
         let id = device.id
-        if alert.runModal() == .alertFirstButtonReturn {
+        let key = device.verificationKey
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            // The daemon accepts even after a request has ended, so check
+            // that the same request (same key) is still waiting.
+            guard store.pairingRequests.contains(where: { $0.id == id && $0.verificationKey == key }) else {
+                store.reportError("The pairing request from \(device.name) has ended. Start the pairing again.")
+                return
+            }
             store.perform("Accept pairing") { try await $0.acceptPairing(id) }
-        } else {
+        case .alertSecondButtonReturn:
             store.perform("Reject pairing") { try await $0.cancelPairing(id) }
+        default:
+            break  // Closed because the request ended.
         }
     }
 }

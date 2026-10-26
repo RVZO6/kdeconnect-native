@@ -51,6 +51,7 @@ struct StatusIcon: View {
     var body: some View {
         Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
             .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onChange(of: store.pairingRequests) { _, requests in PairingPrompt.requestsChanged(requests) }
             .onChange(of: store.pairingRequests.map(\.id)) { old, new in
                 // Ask at once when a device wants to pair, also without the window.
                 for id in new where !old.contains(id) {

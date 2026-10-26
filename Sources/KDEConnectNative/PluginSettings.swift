@@ -187,7 +187,9 @@ private struct CommandEditor: View {
     let onSave: (RunCommand) -> Void
 
     private static let samples: [(String, String)] = [
-        ("Lock Screen", "pmset displaysleepnow"),
+        // Display sleep locks the Mac only when "Require password" is set to
+        // "Immediately" in Lock Screen settings.
+        ("Turn Off Display", "pmset displaysleepnow"),
         ("Sleep", "pmset sleepnow"),
         ("Mute", "osascript -e 'set volume with output muted'"),
         ("Unmute", "osascript -e 'set volume without output muted'"),

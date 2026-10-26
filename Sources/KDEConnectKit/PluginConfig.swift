@@ -257,7 +257,14 @@ struct IniFile {
             }
         }
         if result.hasPrefix("@ByteArray("), result.hasSuffix(")") {
-            return String(result.dropFirst("@ByteArray(".count).dropLast())
+            // QSettings writes each byte of a byte array as one Latin-1
+            // character, often as a \x escape. Turn each one back into its
+            // byte, then read the bytes as UTF-8.
+            var bytes: [UInt8] = []
+            for scalar in result.unicodeScalars.dropFirst("@ByteArray(".count).dropLast() {
+                if scalar.value < 256 { bytes.append(UInt8(scalar.value)) } else { bytes += Array(String(scalar).utf8) }
+            }
+            return String(decoding: bytes, as: UTF8.self)
         }
         if result.hasPrefix("@@") { return String(result.dropFirst()) }
         return result
