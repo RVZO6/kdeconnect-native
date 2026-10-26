@@ -56,6 +56,15 @@ struct DeviceDetail: View {
         }
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
+        // The tabs sit in the window toolbar, centred, apart from the
+        // device header below it.
+        .toolbar {
+            if device.isPaired {
+                ToolbarItem(placement: .principal) {
+                    PagePicker(selection: selection)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in
             if let name = note.object as? String, let target = Page(rawValue: name) { selection.page = target }
         }
@@ -64,10 +73,6 @@ struct DeviceDetail: View {
                 header
                 if device.isPaired, device.isReachable {
                     actionsBar.frame(maxWidth: .infinity)
-                }
-                if device.isPaired {
-                    PagePicker(selection: selection)
-                        .frame(maxWidth: .infinity)
                 }
             }
             // Same width and inset as the grouped form's rows, so the tile
