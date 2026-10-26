@@ -191,6 +191,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await SidebarTest.swipeTest(outputDirectory: args[index + 1])
             return
         }
+        if args.contains("--tab-test") {
+            await SidebarTest.tabTest()
+            return
+        }
         if args.contains("--resize-test") {
             await SidebarTest.resizeTest()
             return
@@ -456,6 +460,38 @@ enum SidebarTest {
             try? await Task.sleep(for: .milliseconds(600))
             shoot("stack-\(phase)-end.png")
         }
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --tab-test` switches the device page between its
+    /// tabs and prints how long the main thread takes to lay out and draw
+    /// the window after each switch.
+    static func tabTest() async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
+            NSApp.terminate(nil); return
+        }
+        var results: [String] = []
+        for name in ["Plugins", "Details", "Overview", "Plugins", "Details", "Overview", "Plugins", "Details", "Overview"] {
+            func ms(_ d: Duration) -> String { String(format: "%.1f", Double(d / .microseconds(1)) / 1000) }
+            let t0 = ContinuousClock.now
+            NotificationCenter.default.post(name: .debugSelectPage, object: name)
+            let t1 = ContinuousClock.now
+            window.contentView?.layoutSubtreeIfNeeded()
+            let t2 = ContinuousClock.now
+            window.displayIfNeeded()
+            let t3 = ContinuousClock.now
+            // Let SwiftUI finish the update it scheduled, then draw again.
+            await Task.yield()
+            window.contentView?.layoutSubtreeIfNeeded()
+            let t4 = ContinuousClock.now
+            window.displayIfNeeded()
+            let t5 = ContinuousClock.now
+            results.append("\(name) \(ms(t5 - t0)) [state \(ms(t1 - t0)) layout \(ms(t2 - t1)) draw \(ms(t3 - t2)) layout2 \(ms(t4 - t3)) draw2 \(ms(t5 - t4))]")
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        print("tab switches:\n " + results.joined(separator: "\n "))
         NSApp.terminate(nil)
     }
 

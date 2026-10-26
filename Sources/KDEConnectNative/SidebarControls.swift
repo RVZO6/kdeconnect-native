@@ -81,7 +81,7 @@ struct SidebarControls: View {
                         removal: .scale(scale: 0.4, anchor: .leading).combined(with: .opacity)))
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(ToolbarGlyphButtonStyle())
             .font(.system(size: 15, weight: .medium))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 3)
@@ -95,4 +95,31 @@ struct SidebarControls: View {
 
     /// Sidebar button + plus button + the capsule's side padding.
     private static let fullWidth: CGFloat = 36 + 34 + 6
+}
+
+/// A toolbar glyph with the system's hover feedback: a soft highlight
+/// behind the glyph on hover, a stronger one while pressed.
+private struct ToolbarGlyphButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        GlyphHover(pressed: configuration.isPressed) { configuration.label }
+    }
+
+    private struct GlyphHover<Label: View>: View {
+        let pressed: Bool
+        @ViewBuilder let label: Label
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var hovering = false
+
+        var body: some View {
+            label
+                .background {
+                    Capsule()
+                        .fill(Color.primary.opacity(pressed ? 0.16 : hovering ? 0.08 : 0))
+                        .padding(.vertical, 2)
+                }
+                .opacity(isEnabled ? 1 : 0.4)
+                .onHover { hovering = $0 && isEnabled }
+                .animation(.easeOut(duration: 0.12), value: hovering)
+        }
+    }
 }
