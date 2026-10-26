@@ -81,6 +81,8 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
+    /// Set at launch; used by the debug capture to select a device.
+    var store: KDEConnectStore?
     private var closeObserver: NSObjectProtocol?
 
     var isMainWindowVisible: Bool { NSApp.windows.contains { Self.isMainWindow($0) && $0.isVisible } }
@@ -115,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var launchedAsLoginItem = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        SidebarToggleQueue.install()
         let event = NSAppleEventManager.shared().currentAppleEvent
         launchedAsLoginItem = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
@@ -124,14 +127,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Starts the supervisor. A launch by the user opens the window; a
     /// launch at login stays in the menu bar.
     func didLaunch(store: KDEConnectStore) async {
+        WindowOpener.shared.store = store
         store.start()
         let args = CommandLine.arguments
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
             await Snapshot.write(store: store, to: args[index + 1])
             return
         }
-        if let index = args.firstIndex(of: "--sidebar-test"), index + 1 < args.count {
-            await SidebarTest.run(outputDirectory: args[index + 1])
+        if let index = args.firstIndex(of: "--window-snapshot"), index + 1 < args.count {
+            await SidebarTest.captureWindow(to: args[index + 1])
+            return
+        }
+        if let index = args.firstIndex(of: "--plugin-snapshot"), index + 2 < args.count {
+            await Snapshot.writePluginSheet(store: store, plugin: args[index + 1], to: args[index + 2])
+            return
+        }
+        if args.contains("--sidebar-test") {
+            await SidebarTest.run()
             return
         }
         if !launchedAsLoginItem {
@@ -173,6 +185,27 @@ enum LoginItem {
     }
 }
 
+extension Snapshot {
+    /// Debug aid: `--plugin-snapshot kdeconnect_clipboard out.png` renders a
+    /// plugin settings sheet for the first paired device.
+    static func writePluginSheet(store: KDEConnectStore, plugin: String, to path: String) async {
+        try? await Task.sleep(for: .seconds(3))
+        guard let device = store.pairedDevices.first else { NSApp.terminate(nil); return }
+        let host = NSHostingView(rootView: PluginSettingsSheet(device: device, plugin: plugin).environment(store))
+        host.frame.size = host.fittingSize
+        let window = NSWindow(contentRect: NSRect(origin: CGPoint(x: -10_000, y: -10_000), size: host.frame.size),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        window.orderBack(nil)
+        try? await Task.sleep(for: .seconds(1))
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+        NSApp.terminate(nil)
+    }
+}
+
 /// Debug aid: `KDEConnectNative --snapshot out.png` renders the main window,
 /// with the first reachable device selected, to a PNG, then quits.
 @MainActor
@@ -195,31 +228,97 @@ enum Snapshot {
     }
 }
 
-/// Debug aid: `--sidebar-test <dir>` opens the main window, toggles the
-/// sidebar quickly, and saves frames of the whole window (title bar included).
+/// Debug aid: `--sidebar-test` opens the main window, toggles the sidebar,
+/// and prints the sidebar width over time: first for one toggle, then for a
+/// burst of fast toggles.
 @MainActor
 enum SidebarTest {
-    static func run(outputDirectory: String) async {
+    static func run() async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(3))
         guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
-              let frame = window.contentView?.superview else { NSApp.terminate(nil); return }
-        var index = 0
-        func capture(_ label: String) {
-            guard let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
-            frame.cacheDisplay(in: frame.bounds, to: rep)
-            let name = String(format: "%02d-%@.png", index, label)
-            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: outputDirectory).appendingPathComponent(name))
-            index += 1
+              let split = findSplitView(in: window.contentView) else {
+            print("no split view")
+            NSApp.terminate(nil)
+            return
         }
-        capture("start")
-        for i in 0..<7 {
-            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: window)
-            try? await Task.sleep(for: .milliseconds(90))
-            capture("toggle\(i)")
+        // The x-position of the detail column: the sidebar's visible width.
+        func width() -> String {
+            let x = split.arrangedSubviews.count > 1 ? Int(split.arrangedSubviews[1].frame.minX) : -1
+            let collapsed = (split.delegate as? NSSplitViewController)?.splitViewItems.first?.isCollapsed
+            return "\(x)\(collapsed == true ? "c" : "")"
+        }
+        let controller = split.delegate as? NSSplitViewController
+        print("controller:", controller.map { String(describing: type(of: $0)) } ?? "none", "key:", window.isKeyWindow)
+        func toggle() { controller?.toggleSidebar(nil) }
+        func sample(_ label: String, for duration: Duration, toggleAt times: [Int] = []) async {
+            var line = "\(label):"
+            let start = ContinuousClock.now
+            var tick = 0
+            var toggles = times
+            while ContinuousClock.now - start < duration {
+                let ms = tick * 25
+                while let next = toggles.first, next <= ms {
+                    toggles.removeFirst()
+                    toggle()
+                    line += " |T"
+                }
+                line += " \(width())"
+                tick += 1
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            print(line)
+        }
+        print("toolbar items:", window.toolbar?.items.map(\.itemIdentifier.rawValue) ?? [])
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), NSTemporaryDirectory() + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        shoot("sidebar-open.png")
+        toggle()
+        try? await Task.sleep(for: .milliseconds(600))
+        shoot("sidebar-closed.png")
+        toggle()
+        try? await Task.sleep(for: .milliseconds(600))
+        print("captures in", NSTemporaryDirectory())
+        await sample("single", for: .milliseconds(900), toggleAt: [0])
+        await sample("back", for: .milliseconds(900), toggleAt: [0])
+        await sample("burst", for: .milliseconds(2600), toggleAt: [0, 100, 200, 300])
+        NSApp.terminate(nil)
+    }
+
+    /// Opens the main window and saves an image of it, title bar included.
+    static func captureWindow(to path: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2))
+        if let store = WindowOpener.shared.store {
+            store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
         }
         try? await Task.sleep(for: .seconds(1.5))
-        capture("settled")
+        if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) {
+            // A real screen capture shows Liquid Glass; cacheDisplay does not.
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path.replacingOccurrences(of: ".png", with: "-screen.png")]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+           let frame = window.contentView?.superview,
+           let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
         NSApp.terminate(nil)
+    }
+
+    private static func findSplitView(in view: NSView?) -> NSSplitView? {
+        guard let view else { return nil }
+        if let split = view as? NSSplitView { return split }
+        for sub in view.subviews { if let found = findSplitView(in: sub) { return found } }
+        return nil
     }
 }

@@ -17,7 +17,7 @@ cp Resources/Info.plist "$app/Contents/Info.plist"
 # Compile the Icon Composer document into Assets.car and AppIcon.icns.
 partial="$(mktemp -t kdeconnect-icon)"
 xcrun actool Resources/AppIcon.icon --compile "$app/Contents/Resources" \
-    --platform macosx --minimum-deployment-target 15.0 --app-icon AppIcon \
+    --platform macosx --minimum-deployment-target 27.0 --app-icon AppIcon \
     --output-partial-info-plist "$partial" >/dev/null
 rm -f "$partial"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" \

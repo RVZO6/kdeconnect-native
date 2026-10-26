@@ -50,12 +50,13 @@ private struct ClipboardSettings: View {
                        isOn: $sendPassword.saving { store.savePluginConfig(config, ["sendPassword": .bool($0)]) })
                     .disabled(!autoShare)
                 LabeledContent("Largest file to share") {
-                    HStack {
-                        TextField("", value: $maxFileSize.saving { _ in saveSize() }, format: .number)
-                            .frame(width: 70)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        TextField("Size", value: $maxFileSize.saving { _ in saveSize() }, format: .number)
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
                             .multilineTextAlignment(.trailing)
-                        Stepper("", value: $maxFileSize.saving { _ in saveSize() }, in: 0...1_000_000).labelsHidden()
-                        Text("MB")
+                            .frame(width: 72)
+                        Text("MB").foregroundStyle(.secondary)
                     }
                 }
             } header: {

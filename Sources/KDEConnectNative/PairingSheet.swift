@@ -105,7 +105,7 @@ private struct CandidateRow: View {
                 }
                 Button("Reject") { store.perform("Reject pairing") { try await $0.cancelPairing(id) } }
                 Button("Accept") { store.perform("Accept pairing") { try await $0.acceptPairing(id) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
             } else if device.isPairRequested {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("Confirm on the device").foregroundStyle(.secondary)
@@ -119,7 +119,7 @@ private struct CandidateRow: View {
                 Button("Cancel") { store.perform("Cancel pairing") { try await $0.cancelPairing(id) } }
             } else {
                 Button("Pair") { store.perform("Pair") { try await $0.requestPairing(id) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
             }
         }
     }
