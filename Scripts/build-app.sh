@@ -33,6 +33,10 @@ if [[ "${1:-}" == "--install" ]]; then
     mkdir -p "$HOME/Applications"
     rm -rf "$dest"
     cp -R "$app" "$dest"
-    open "$dest"
+    # LaunchServices can still refuse right after a replace (-600); try again.
+    for attempt in 1 2 3; do
+        open "$dest" 2>/dev/null && break
+        sleep 1
+    done
     echo "Installed $dest"
 fi
