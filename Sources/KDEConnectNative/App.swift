@@ -128,8 +128,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// launch at login stays in the menu bar.
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
-        store.start()
         let args = CommandLine.arguments
+        if args.contains("--demo") {
+            store.showDemo()
+        } else {
+            store.start()
+        }
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
             await Snapshot.write(store: store, to: args[index + 1])
             return
@@ -294,7 +298,7 @@ enum SidebarTest {
     static func captureWindow(to path: String) async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(2))
-        if let store = WindowOpener.shared.store {
+        if let store = WindowOpener.shared.store, store.selectedDeviceId == nil {
             store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
         }
         try? await Task.sleep(for: .seconds(1.5))

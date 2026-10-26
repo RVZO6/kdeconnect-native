@@ -82,4 +82,5 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 - Daemon output: `~/Library/Logs/KDEConnectNative/kdeconnectd.log`
 - Print the sidebar position while it toggles (one toggle, then a fast burst): `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --sidebar-test`
 - Save an image of the real window, title bar included: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --window-snapshot /tmp/window.png`
+- Fill the window with a sample connected phone, without the daemon: add `--demo` (for example with `--window-snapshot`)
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`

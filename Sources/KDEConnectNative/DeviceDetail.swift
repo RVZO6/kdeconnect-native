@@ -26,7 +26,6 @@ struct DeviceDetail: View {
             } else {
                 switch page {
                 case .overview:
-                    if device.isReachable { actionsSection }
                     notificationsSection
                 case .plugins:
                     pluginsSection
@@ -42,14 +41,16 @@ struct DeviceDetail: View {
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
         .safeAreaBar(edge: .top) {
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 header
+                if device.isPaired, device.isReachable { actionsBar }
                 if device.isPaired {
                     Picker("Page", selection: $page) {
                         ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .pickerStyle(.tabs)
                     .labelsHidden()
+                    .frame(maxWidth: .infinity)
                 }
             }
             // Same width as the grouped form's cards. The inset is the rows'
@@ -154,42 +155,35 @@ struct DeviceDetail: View {
         }
     }
 
-    private var actionsSection: some View {
-        Section {
-            let id = device.id
-            // One container, so that the glass buttons blend and morph together.
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    if device.has(.findMyPhone) {
-                        ActionButton("Ring", symbol: "speaker.wave.3") {
-                            store.perform("Ring") { try await $0.ring(id) }
-                        }
-                    }
-                    if device.has(.ping) {
-                        ActionButton("Ping", symbol: "dot.radiowaves.left.and.right") {
-                            store.perform("Ping") { try await $0.ping(id) }
-                        }
-                    }
-                    if device.has(.clipboard) {
-                        ActionButton("Send Clipboard", symbol: "doc.on.clipboard") {
-                            store.perform("Send clipboard") { try await $0.sendClipboard(id) }
-                        }
-                    }
-                    if device.has(.share) {
-                        ActionButton("Send Files…", symbol: "paperplane") { FileSender.choose(for: device, store: store) }
-                    }
-                    if device.has(.sms) {
-                        ActionButton("Messages", symbol: "message") { store.openSMSApp() }
+    /// The device actions as one row of glass buttons in the header bar,
+    /// not in a card of their own.
+    private var actionsBar: some View {
+        let id = device.id
+        // One container, so that the glass buttons blend and morph together.
+        return GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                if device.has(.findMyPhone) {
+                    ActionButton("Ring", symbol: "speaker.wave.3") {
+                        store.perform("Ring") { try await $0.ring(id) }
                     }
                 }
-            }
-            .listRowBackground(Color.clear)
-        } header: {
-            Text("Actions")
-        } footer: {
-            if canShare {
-                Text("You can also drop files on this window to send them.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if device.has(.ping) {
+                    ActionButton("Ping", symbol: "dot.radiowaves.left.and.right") {
+                        store.perform("Ping") { try await $0.ping(id) }
+                    }
+                }
+                if device.has(.clipboard) {
+                    ActionButton("Send Clipboard", symbol: "doc.on.clipboard") {
+                        store.perform("Send clipboard") { try await $0.sendClipboard(id) }
+                    }
+                }
+                if device.has(.share) {
+                    ActionButton("Send Files…", symbol: "paperplane") { FileSender.choose(for: device, store: store) }
+                        .help("Choose files to send. You can also drop files on this window.")
+                }
+                if device.has(.sms) {
+                    ActionButton("Messages", symbol: "message") { store.openSMSApp() }
+                }
             }
         }
     }
@@ -324,15 +318,9 @@ private struct ActionButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            VStack(spacing: 4) {
-                Image(systemName: symbol).font(.title3)
-                Text(title).font(.caption)
-            }
-            .frame(maxWidth: .infinity, minHeight: 48)
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.roundedRectangle(radius: 14))
+        Button(title, systemImage: symbol, action: action)
+            .buttonStyle(.glass)
+            .controlSize(.large)
     }
 }
 
@@ -356,22 +344,6 @@ private struct NotificationRow: View {
                     }
                 }
                 Spacer()
-                if !notification.replyId.isEmpty {
-                    Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
-                        .help("Reply")
-                }
-                if notification.dismissable {
-                    Button("Dismiss", systemImage: "xmark.circle.fill") {
-                        let (d, n) = (deviceId, notification.id)
-                        store.perform("Dismiss") { try await $0.dismissNotification(deviceId: d, notificationId: n) }
-                    }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-                    .help("Dismiss on the device")
-                }
             }
             if replying {
                 HStack {
@@ -379,10 +351,40 @@ private struct NotificationRow: View {
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(sendReply)
                     Button("Send", action: sendReply).disabled(reply.isEmpty)
+                    Button("Cancel") { replying = false; reply = "" }
                 }
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        // Swipe right to reply, left to dismiss, as in Mail and Notification
+        // Center. The context menu offers the same for a mouse.
+        .swipeActions(edge: .leading) {
+            if canReply {
+                Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
+                    .tint(.blue)
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if notification.dismissable {
+                Button("Dismiss", systemImage: "xmark", role: .destructive, action: dismiss)
+            }
+        }
+        .contextMenu {
+            if canReply {
+                Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
+            }
+            if notification.dismissable {
+                Button("Dismiss on Device", systemImage: "xmark", action: dismiss)
+            }
+        }
+    }
+
+    private var canReply: Bool { !notification.replyId.isEmpty }
+
+    private func dismiss() {
+        let (d, n) = (deviceId, notification.id)
+        store.perform("Dismiss") { try await $0.dismissNotification(deviceId: d, notificationId: n) }
     }
 
     private func sendReply() {
