@@ -80,12 +80,18 @@ struct DeviceDetail: View {
         .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in
             if let name = note.object as? String, let target = Page(rawValue: name) { selection.page = target }
         }
+        // The actions float at the bottom of the page, as icons in one
+        // glass capsule; the page scrolls under them.
+        .safeAreaBar(edge: .bottom) {
+            if device.isPaired, device.isReachable {
+                actionsBar
+                    .padding(.bottom, 14)
+                    .frame(maxWidth: .infinity)
+            }
+        }
         .safeAreaBar(edge: .top) {
             VStack(alignment: .leading, spacing: 8) {
                 header
-                if device.isPaired, device.isReachable {
-                    actionsBar.frame(maxWidth: .infinity)
-                }
             }
             // Same width and inset as the grouped form's rows, so the tile
             // lines up with the row content below.
@@ -212,13 +218,11 @@ struct DeviceDetail: View {
         }
     }
 
-    /// The device actions as one row of glass buttons in the header bar,
-    /// not in a card of their own.
+    /// The device actions as icons in one floating glass capsule.
     private var actionsBar: some View {
         let id = device.id
-        // One container, so that the glass buttons blend and morph together.
-        return GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
+        return GlassEffectContainer {
+            HStack(spacing: 2) {
                 if device.has(.findMyPhone) {
                     ActionButton("Ring", symbol: "speaker.wave.3") {
                         store.perform("Ring") { try await $0.ring(id) }
@@ -242,6 +246,9 @@ struct DeviceDetail: View {
                     ActionButton("Messages", symbol: "message") { store.openSMSApp() }
                 }
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 
@@ -371,10 +378,18 @@ private struct ActionButton: View {
         self.action = action
     }
 
+    /// An icon only; the name shows as a tooltip and to VoiceOver.
     var body: some View {
-        Button(title, systemImage: symbol, action: action)
-            .buttonStyle(.glass)
-            .controlSize(.large)
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .medium))
+                .frame(width: 40, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ToolbarGlyphButtonStyle())
+        .foregroundStyle(.primary)
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 

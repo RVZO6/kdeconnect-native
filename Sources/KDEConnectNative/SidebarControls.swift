@@ -99,7 +99,7 @@ struct SidebarControls: View {
 
 /// A toolbar glyph with the system's hover feedback: a soft highlight
 /// behind the glyph on hover, a stronger one while pressed.
-private struct ToolbarGlyphButtonStyle: ButtonStyle {
+struct ToolbarGlyphButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         GlyphHover(pressed: configuration.isPressed) { configuration.label }
     }
