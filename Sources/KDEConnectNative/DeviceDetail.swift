@@ -17,33 +17,41 @@ struct DeviceDetail: View {
     @State private var confirmUnpair = false
     @State private var dropTargeted = false
     @State private var settingsPlugin: PluginSheetItem?
-    /// True while page content scrolls under the header bar.
-    @State private var contentUnderBar = false
+
+    @Environment(\.displayScale) private var displayScale
+    @State private var overviewScroll = ScrollPosition()
 
     var body: some View {
-        Form {
-            if !device.isPaired {
-                pairingSection
-                detailsSection
+        Group {
+            if device.isPaired && page == .overview {
+                // Cards, not form rows, so that a card can be swiped off.
+                ScrollView {
+                    NotificationCards(device: device)
+                        .frame(maxWidth: 704)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollPosition($overviewScroll)
+                .onReceive(NotificationCenter.default.publisher(for: .debugScrollPage)) { _ in
+                    overviewScroll.scrollTo(y: 160)
+                }
             } else {
-                switch page {
-                case .overview:
-                    notificationsSection
-                case .plugins:
-                    pluginsSection
-                case .details:
-                    detailsSection
-                    Section {
-                        Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
+                Form {
+                    if !device.isPaired {
+                        pairingSection
+                        detailsSection
+                    } else if page == .plugins {
+                        pluginsSection
+                    } else {
+                        detailsSection
+                        Section {
+                            Button("Unpair \(device.name)…", role: .destructive) { confirmUnpair = true }
+                        }
                     }
                 }
+                .formStyle(.grouped)
             }
-        }
-        .formStyle(.grouped)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top > 0.5
-        } action: { _, under in
-            contentUnderBar = under
         }
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
@@ -71,12 +79,14 @@ struct DeviceDetail: View {
             .padding(.top, 8)
             .padding(.bottom, 10)
             .frame(maxWidth: .infinity)
-            // A plain line while nothing is under the bar. When content
-            // scrolls under it, the scroll edge effect separates them.
+            // The system draws a hairline under the bar. This one pixel, on
+            // top of it in both states, makes the line clearer and keeps it
+            // the same whether or not content is under the bar.
             .overlay(alignment: .bottom) {
-                Divider().opacity(contentUnderBar ? 0 : 1)
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(height: 1 / displayScale)
             }
-            .animation(.easeOut(duration: 0.15), value: contentUnderBar)
         }
         .overlay {
             if dropTargeted {
@@ -201,17 +211,6 @@ struct DeviceDetail: View {
                     ActionButton("Messages", symbol: "message") { store.openSMSApp() }
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var notificationsSection: some View {
-        Section("Notifications") {
-            if device.notifications.isEmpty {
-                Text(device.isReachable ? "No notifications." : "Notifications show when the device is connected.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(device.notifications) { NotificationRow(deviceId: device.id, notification: $0) }
         }
     }
 
@@ -340,74 +339,8 @@ private struct ActionButton: View {
     }
 }
 
-private struct NotificationRow: View {
-    @Environment(KDEConnectStore.self) private var store
-    let deviceId: String
-    let notification: PhoneNotification
-    @State private var replying = false
-    @State private var reply = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    if !notification.title.isEmpty {
-                        Text(notification.title).fontWeight(.medium)
-                    }
-                    if !notification.text.isEmpty {
-                        Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
-                    }
-                }
-                Spacer()
-            }
-            if replying {
-                HStack {
-                    TextField("Reply", text: $reply)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(sendReply)
-                    Button("Send", action: sendReply).disabled(reply.isEmpty)
-                    Button("Cancel") { replying = false; reply = "" }
-                }
-            }
-        }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        // Swipe right to reply, left to dismiss, as in Mail and Notification
-        // Center. The context menu offers the same for a mouse.
-        .swipeActions(edge: .leading) {
-            if canReply {
-                Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
-                    .tint(.blue)
-            }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if notification.dismissable {
-                Button("Dismiss", systemImage: "xmark", role: .destructive, action: dismiss)
-            }
-        }
-        .contextMenu {
-            if canReply {
-                Button("Reply", systemImage: "arrowshape.turn.up.left") { replying = true }
-            }
-            if notification.dismissable {
-                Button("Dismiss on Device", systemImage: "xmark", action: dismiss)
-            }
-        }
-    }
-
-    private var canReply: Bool { !notification.replyId.isEmpty }
-
-    private func dismiss() {
-        let (d, n) = (deviceId, notification.id)
-        store.perform("Dismiss") { try await $0.dismissNotification(deviceId: d, notificationId: n) }
-    }
-
-    private func sendReply() {
-        guard !reply.isEmpty else { return }
-        let (d, r, m) = (deviceId, notification.replyId, reply)
-        store.perform("Reply") { try await $0.replyToNotification(deviceId: d, replyId: r, message: m) }
-        reply = ""
-        replying = false
-    }
+extension Notification.Name {
+    /// Debug aid: scrolls the Overview page, so that captures can show
+    /// content under the header bar.
+    static let debugScrollPage = Notification.Name("KDEConnectNativeDebugScrollPage")
 }

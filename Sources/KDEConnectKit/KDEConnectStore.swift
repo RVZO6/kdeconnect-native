@@ -331,7 +331,7 @@ public final class KDEConnectStore {
     /// Runs a daemon call and shows its error to the user.
     public func perform(_ action: String, _ body: @escaping @Sendable (KDEConnectClient) async throws -> Void) {
         guard let client else {
-            lastError = "\(action) failed: KDE Connect is not running"
+            if !isDemo { lastError = "\(action) failed: KDE Connect is not running" }
             return
         }
         Task {
@@ -347,9 +347,13 @@ public final class KDEConnectStore {
 
     public func clearError() { lastError = nil }
 
+    /// True in demo mode, where daemon calls do nothing.
+    @ObservationIgnored private var isDemo = false
+
     /// Debug aid: fills the store with a sample connected phone, without a
     /// daemon, so that the UI can be checked. Do not call `start()` as well.
     public func showDemo() {
+        isDemo = true
         status = .connected
         announcedName = "This Mac"
         var phone = Device(id: "demo_phone", properties: [
@@ -369,7 +373,12 @@ public final class KDEConnectStore {
                                                     "replyId": .string("r2")]),
             PhoneNotification(id: "1", properties: ["appName": .string("Calendar"), "title": .string("Stand-up"),
                                                     "text": .string("In 10 minutes"), "dismissable": .bool(true)]),
-        ]
+        ] + (3...9).map { n in
+            PhoneNotification(id: String(n), properties: [
+                "appName": .string("Mail"), "title": .string("Message \(n)"),
+                "text": .string("A sample notification, so that the page can scroll."), "dismissable": .bool(true),
+            ])
+        }
         let laptop = Device(id: "demo_laptop", properties: [
             "name": .string("Sample Laptop"), "type": .string("laptop"), "isPaired": .bool(true),
         ])
