@@ -17,6 +17,8 @@ struct DeviceDetail: View {
     @State private var confirmUnpair = false
     @State private var dropTargeted = false
     @State private var settingsPlugin: PluginSheetItem?
+    /// True while page content scrolls under the header bar.
+    @State private var contentUnderBar = false
 
     var body: some View {
         Form {
@@ -38,12 +40,19 @@ struct DeviceDetail: View {
             }
         }
         .formStyle(.grouped)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top > 0.5
+        } action: { _, under in
+            contentUnderBar = under
+        }
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
         .safeAreaBar(edge: .top) {
             VStack(alignment: .leading, spacing: 12) {
                 header
-                if device.isPaired, device.isReachable { actionsBar }
+                if device.isPaired, device.isReachable {
+                    actionsBar.frame(maxWidth: .infinity)
+                }
                 if device.isPaired {
                     Picker("Page", selection: $page) {
                         ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
@@ -60,7 +69,14 @@ struct DeviceDetail: View {
             .frame(maxWidth: 704)
             .padding(.horizontal, 20)
             .padding(.top, 8)
-            .padding(.bottom, 4)
+            .padding(.bottom, 10)
+            .frame(maxWidth: .infinity)
+            // A plain line while nothing is under the bar. When content
+            // scrolls under it, the scroll edge effect separates them.
+            .overlay(alignment: .bottom) {
+                Divider().opacity(contentUnderBar ? 0 : 1)
+            }
+            .animation(.easeOut(duration: 0.15), value: contentUnderBar)
         }
         .overlay {
             if dropTargeted {
