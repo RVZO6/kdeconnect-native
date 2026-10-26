@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "KDEConnectNative",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .executable(name: "KDEConnectNative", targets: ["KDEConnectNative"]),
         .executable(name: "dbus-probe", targets: ["dbus-probe"]),

@@ -4,22 +4,33 @@ import SwiftUI
 
 @main
 struct KDEConnectNativeApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var store = KDEConnectStore()
-    @AppStorage("showBatteryInMenuBar") private var showBattery = true
 
     var body: some Scene {
+        Window("KDE Connect", id: MainWindow.id) {
+            MainWindow()
+                .environment(store)
+        }
+        .defaultSize(width: 900, height: 600)
+        .defaultLaunchBehavior(.suppressed)
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Refresh Devices") { store.refreshNetwork() }
+                    .keyboardShortcut("r")
+            }
+        }
+
         MenuBarExtra {
-            MenuContent()
+            StatusMenu()
                 .environment(store)
         } label: {
-            // The label exists from launch, so it starts the supervisor.
-            MenuBarLabel(store: store, showBattery: showBattery)
-                .task {
-                    store.start()
-                    await Snapshot.writeIfRequested(store: store)
-                }
+            // The label exists from launch, so it starts the supervisor and
+            // gives the app delegate a way to open the main window.
+            StatusIcon(store: store)
+                .task { await appDelegate.didLaunch(store: store) }
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
 
         Settings {
             SettingsView()
@@ -28,22 +39,75 @@ struct KDEConnectNativeApp: App {
     }
 }
 
-struct MenuBarLabel: View {
+struct StatusIcon: View {
     let store: KDEConnectStore
-    let showBattery: Bool
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        if let device = store.primaryDevice {
-            if showBattery, let battery = device.battery {
-                Label("\(battery.charge)%", systemImage: device.kind.symbol).labelStyle(.titleAndIcon)
-            } else {
-                Image(systemName: device.kind.symbol)
+        Image(systemName: store.primaryDevice != nil ? "iphone" : "iphone.slash")
+            .onAppear { WindowOpener.shared.open = { openWindow(id: MainWindow.id) } }
+            .onChange(of: store.lastError) { _, error in
+                // The main window shows errors itself. Without it, actions
+                // from the menu or Settings must not fail silently.
+                guard let error, !WindowOpener.shared.isMainWindowVisible else { return }
+                let alert = NSAlert()
+                alert.messageText = "KDE Connect"
+                alert.informativeText = error
+                NSApp.activate()
+                alert.runModal()
+                store.clearError()
             }
-        } else {
-            Image(systemName: store.status == .connected ? "iphone.slash" : "iphone.slash.circle")
-                .help("KDE Connect")
+    }
+}
+
+/// Lets AppKit code open the SwiftUI main window.
+@MainActor
+final class WindowOpener {
+    static let shared = WindowOpener()
+    var open: (() -> Void)?
+    var isMainWindowVisible = false
+
+    func showMainWindow() {
+        // An accessory app must become a regular app to own a key window
+        // and a Dock icon. MainWindow switches back when it closes.
+        NSApp.setActivationPolicy(.regular)
+        open?()
+        NSApp.activate()
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedAsLoginItem = event?.eventID == AEEventID(kAEOpenApplication)
+            && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+            == OSType(keyAELaunchedAsLogInItem)
+    }
+
+    /// Starts the supervisor. A launch by the user opens the window; a
+    /// launch at login stays in the menu bar.
+    func didLaunch(store: KDEConnectStore) async {
+        store.start()
+        let args = CommandLine.arguments
+        if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
+            await Snapshot.write(store: store, to: args[index + 1])
+            return
+        }
+        if !launchedAsLoginItem {
+            WindowOpener.shared.showMainWindow()
         }
     }
+
+    /// Opening the app again (Finder, Spotlight, Dock) shows the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        WindowOpener.shared.showMainWindow()
+        return false
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }
 
 extension Device.Kind {
@@ -71,25 +135,23 @@ enum LoginItem {
     }
 }
 
-/// Debug aid: `KDEConnectNative --snapshot out.png` renders the menu panel
-/// to a PNG after the first refresh, then quits.
+/// Debug aid: `KDEConnectNative --snapshot out.png` renders the main window,
+/// with the first reachable device selected, to a PNG, then quits.
 @MainActor
 enum Snapshot {
-    static func writeIfRequested(store: KDEConnectStore) async {
-        let args = CommandLine.arguments
-        guard let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count else { return }
+    static func write(store: KDEConnectStore, to path: String) async {
         try? await Task.sleep(for: .seconds(4))
-        // An off-screen window renders AppKit-backed views, which ImageRenderer cannot.
-        let host = NSHostingView(rootView: MenuContent().environment(store).background(.background))
-        host.frame.size = host.fittingSize
+        store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
+        let host = NSHostingView(rootView: MainWindow().environment(store))
+        host.frame.size = CGSize(width: 900, height: 640)
         let window = NSWindow(contentRect: NSRect(origin: CGPoint(x: -10_000, y: -10_000), size: host.frame.size),
-                              styleMask: .borderless, backing: .buffered, defer: false)
+                              styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
         window.contentView = host
         window.orderBack(nil)
-        try? await Task.sleep(for: .milliseconds(300))
+        try? await Task.sleep(for: .seconds(1.5))
         if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
             host.cacheDisplay(in: host.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[index + 1]))
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
         }
         NSApp.terminate(nil)
     }

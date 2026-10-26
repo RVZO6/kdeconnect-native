@@ -1,7 +1,8 @@
 # KDE Connect Native
 
-A native SwiftUI menu bar app for KDE Connect on macOS. It replaces the Qt
-indicator, but keeps the official `kdeconnectd` daemon from
+A native SwiftUI app for KDE Connect on macOS. It replaces the Qt window
+(`kdeconnect-app`) and the Qt menu bar indicator, but keeps the official
+`kdeconnectd` daemon from
 `/Applications/KDE Connect.app`. The protocol, pairing and plugins stay
 upstream code. This app is only the UI and a supervisor.
 
@@ -21,20 +22,24 @@ and restarts the daemon when it is missing or on a dead bus.
 
 ## Features
 
-- Menu bar icon with the phone battery level.
-- Per device: battery, cellular network type, Ring, Ping, Send clipboard,
-  Send files (button or drag and drop onto the device card).
-- Phone notifications: list, dismiss and reply.
-- Pair, accept and reject pairing requests. Unpair from the context menu.
-- Supervisor: starts `kdeconnectd` when it is missing, and restarts it with a
-  fresh bus when its bus is gone. Asks for a new network announcement after
-  wake. "Restart KDE Connect Service" also removes stale buses.
-- Opens the stock KDE Connect settings and SMS apps on the correct bus.
-- Open at login.
+- **Main window** (replaces `kdeconnect-app`): devices in a sidebar
+  (connected, remembered, available, pairing requests). The device page
+  shows battery, network, Ring, Ping, Send clipboard, Send files (button or
+  drop files on the window), Messages, phone notifications (dismiss and
+  reply), plugin toggles, verification key and addresses. Pair, accept,
+  reject and unpair.
+- **Settings window**: this Mac's device name, open at login, connection
+  types (LAN, Bluetooth), device addresses for networks without discovery
+  (for example Tailscale), and service supervision.
+- **Menu bar**: a plain native menu with one submenu per device.
+- **Supervisor**: starts `kdeconnectd` when it is missing, and restarts it
+  with a fresh bus when its bus is gone. Asks for a new network announcement
+  after wake.
+- A manual launch opens the window. A launch at login stays in the menu bar.
 
 ## Requirements
 
-- macOS 14 or later.
+- macOS 15 or later.
 - KDE Connect.app (the official build) in `/Applications`. Tested with 26.08.
 
 ## Build and install
@@ -46,8 +51,8 @@ swift test                      # D-Bus marshalling tests
 ```
 
 Then remove the stock "KDE Connect" from **System Settings → General → Login
-Items**, and turn on "Open at login" in this app's settings. The stock
-indicator can run at the same time, but then two menu bar icons show.
+Items**, and turn on "Open at login" in this app's settings. Do not run the
+stock indicator or `kdeconnect-app` at the same time.
 
 ## Design
 
@@ -55,7 +60,7 @@ indicator can run at the same time, but then two menu bar icons show.
 | --- | --- |
 | `DBusKit` | Small pure-Swift D-Bus client: wire format, SASL EXTERNAL auth, method calls, signals. No libdbus. |
 | `KDEConnectKit` | Typed `kdeconnectd` API (`KDEConnectClient`), process control (`DaemonProcess`), and the observable app state with the supervisor loop (`KDEConnectStore`). |
-| `KDEConnectNative` | The SwiftUI menu bar app. |
+| `KDEConnectNative` | The SwiftUI app: main window, settings and menu bar menu. |
 | `dbus-probe` | Development tool: `dbus-probe introspect <path>` and `dbus-probe call <path> <iface> <member> [args]`. |
 
 The app starts `kdeconnectd` and `dbus-daemon` with `posix_spawn` and
@@ -67,4 +72,4 @@ this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
 
 - Supervisor log: `log stream --predicate 'subsystem == "app.kdeconnect-native"' --info`
 - Daemon output: `~/Library/Logs/KDEConnectNative/kdeconnectd.log`
-- Render the menu panel to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/menu.png`
+- Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`
