@@ -67,7 +67,8 @@ struct DeviceDetail: View {
                     // the page column. It draws its own glass, because the
                     // toolbar's glass would stay at the unmoved position.
                     PagePicker(selection: selection)
-                        .padding(4)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
                         .glassEffect(.regular, in: .capsule)
                         .offset(x: sidebarInset / 2)
                 }
