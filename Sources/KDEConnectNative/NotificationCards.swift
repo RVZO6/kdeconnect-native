@@ -4,21 +4,27 @@ import SwiftUI
 
 /// Phone notifications as separate cards. Swipe a card off to either side
 /// with two fingers to dismiss it, as with notification banners.
-struct NotificationCards: View {
+struct NotificationCards: View, Equatable {
     @Environment(KDEConnectStore.self) private var store
-    let device: Device
+    let deviceId: String
+    let isReachable: Bool
+    let notifications: [PhoneNotification]
     /// Cards that flew off. They stay hidden until the phone confirms.
     @State private var dismissed: Set<String> = []
     /// Apps whose group is open. A group of more than one starts as a stack.
     @State private var expanded: Set<String> = []
 
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.deviceId == rhs.deviceId && lhs.isReachable == rhs.isReachable && lhs.notifications == rhs.notifications
+    }
+
     /// Notifications grouped by app. The app with the newest notification
     /// comes first; inside a group, the newest is on top.
     private var groups: [(app: String, items: [PhoneNotification])] {
-        let visible = device.notifications.filter { !dismissed.contains($0.id) }
+        let visible = notifications.filter { !dismissed.contains($0.id) }
         var order: [String] = []
         var byApp: [String: [PhoneNotification]] = [:]
-        // device.notifications is already newest first.
+        // notifications is already newest first.
         for item in visible {
             let app = item.appName.isEmpty ? "Other" : item.appName
             if byApp[app] == nil { order.append(app) }
@@ -29,16 +35,16 @@ struct NotificationCards: View {
 
     var body: some View {
         let groups = groups
-        VStack(alignment: .leading, spacing: 18) {
+        LazyVStack(alignment: .leading, spacing: 18) {
             if groups.isEmpty {
-                Text(device.isReachable ? "No notifications." : "Notifications show when the device is connected.")
+                Text(isReachable ? "No notifications." : "Notifications show when the device is connected.")
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 6)
             }
             ForEach(groups, id: \.app) { group in
                 NotificationGroup(
-                    app: group.app, items: group.items, deviceId: device.id,
+                    app: group.app, items: group.items, deviceId: deviceId,
                     isExpanded: Binding(
                         get: { group.items.count == 1 || expanded.contains(group.app) },
                         set: { open in
@@ -50,15 +56,23 @@ struct NotificationCards: View {
                     onClear: { clear(group.items) })
             }
         }
-        .onChange(of: device.notifications.map(\.id)) { _, ids in
+        .onChange(of: notifications.map(\.id)) { _, ids in
             dismissed.formIntersection(ids)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .debugToggleStacks)) { _ in
+            // Keep this on the parent: off-screen lazy groups do not have
+            // a header subscriber yet, but must use the same expanded state.
+            let apps = Set(groups.filter { $0.items.count > 1 }.map(\.app))
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
+                expanded = apps.isSubset(of: expanded) ? [] : apps
+            }
         }
     }
 
     private func clear(_ items: [PhoneNotification]) {
         let targets = items.filter(\.dismissable)
         withAnimation(.snappy(duration: 0.25)) { dismissed.formUnion(targets.map(\.id)) }
-        let deviceId = device.id
+        let deviceId = self.deviceId
         let ids = targets.map(\.id)
         store.perform("Clear notifications") { client in
             for id in ids { try await client.dismissNotification(deviceId: deviceId, notificationId: id) }
@@ -86,12 +100,8 @@ private struct NotificationGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
-                .onReceive(NotificationCenter.default.publisher(for: .debugToggleStacks)) { _ in
-                    guard items.count > 1 else { return }
-                    withAnimation(Self.spring) { isExpanded.toggle() }
-                }
             StackLayout(stacked: isStacked) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, notification in
+                ForEach(items.enumerated(), id: \.element.id) { index, notification in
                     card(notification, index: index)
                 }
             }
@@ -110,8 +120,14 @@ private struct NotificationGroup: View {
         .scaleEffect(1 - 0.05 * CGFloat(depth), anchor: .bottom)
         .opacity(isStacked && index > 2 ? 0 : 1)
         .allowsHitTesting(!behind)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-            if index == 0, !behind { frontHeight = height }
+        .background {
+            // Only the front card determines the collapsed height. Keep
+            // this observer out of every other card's geometry graph.
+            if index == 0 {
+                Color.clear
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { frontHeight = $0 }
+                    .allowsHitTesting(false)
+            }
         }
         .overlay {
             // While stacked, a click anywhere on the front card opens the stack.
@@ -183,22 +199,32 @@ private struct StackLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 480
-        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
-        guard let first = heights.first else { return CGSize(width: width, height: 0) }
+        guard let front = subviews.first else { return CGSize(width: width, height: 0) }
         if stacked {
-            return CGSize(width: width, height: first + peek * CGFloat(min(heights.count - 1, 2)))
+            // Every card behind the front has the front's fixed height.
+            // Measuring invisible cards still builds and lays out their text.
+            let height = front.sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+            return CGSize(width: width, height: height + peek * CGFloat(min(subviews.count - 1, 2)))
         }
+        let heights = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
         return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(heights.count - 1))
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        if stacked {
+            guard let front = subviews.first else { return }
+            let height = front.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
+            for (index, subview) in subviews.enumerated() {
+                subview.place(at: CGPoint(x: bounds.minX, y: bounds.minY + peek * CGFloat(min(index, 2))),
+                              proposal: ProposedViewSize(width: bounds.width, height: height))
+            }
+            return
+        }
         var y = bounds.minY
-        for (index, subview) in subviews.enumerated() {
+        for subview in subviews {
             let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
-            let origin = stacked
-                ? CGPoint(x: bounds.minX, y: bounds.minY + peek * CGFloat(min(index, 2)))
-                : CGPoint(x: bounds.minX, y: y)
-            subview.place(at: origin, proposal: ProposedViewSize(width: bounds.width, height: size.height))
+            subview.place(at: CGPoint(x: bounds.minX, y: y),
+                          proposal: ProposedViewSize(width: bounds.width, height: size.height))
             y += size.height + spacing
         }
     }
@@ -223,35 +249,39 @@ private struct NotificationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    if showsAppName {
-                        Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            // Keep the card, its identity, and its reply state in the layout,
+            // but do not build text fields or glass buttons behind a stack.
+            if !contentHidden {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if showsAppName {
+                            Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        }
+                        if !notification.title.isEmpty {
+                            Text(notification.title).fontWeight(.medium)
+                        }
+                        if !notification.text.isEmpty {
+                            Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
+                        }
                     }
-                    if !notification.title.isEmpty {
-                        Text(notification.title).fontWeight(.medium)
-                    }
-                    if !notification.text.isEmpty {
-                        Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
+                    Spacer(minLength: 8)
+                    if canReply {
+                        Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.glass)
+                            .buttonBorderShape(.circle)
+                            .opacity(hovering || replying ? 1 : 0)
+                            .help("Reply")
                     }
                 }
-                Spacer(minLength: 8)
-                if canReply {
-                    Button("Reply", systemImage: "arrowshape.turn.up.left") { replying.toggle() }
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.circle)
-                        .opacity(hovering || replying ? 1 : 0)
-                        .help("Reply")
-                }
-            }
-            if replying {
-                HStack {
-                    TextField("Reply", text: $reply)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(sendReply)
-                    Button("Send", action: sendReply).disabled(reply.isEmpty)
-                    Button("Cancel") { replying = false; reply = "" }
+                if replying {
+                    HStack {
+                        TextField("Reply", text: $reply)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(sendReply)
+                        Button("Send", action: sendReply).disabled(reply.isEmpty)
+                        Button("Cancel") { replying = false; reply = "" }
+                    }
                 }
             }
         }
@@ -319,9 +349,12 @@ private struct SwipeToDismiss: ViewModifier {
             .offset(x: offset)
             .background { indicators }
             .background {
-                HorizontalSwipeCatcher(active: active, onChange: change, onEnd: end)
+                // Only the event catcher is conditional, not the card. A
+                // disabled catcher must not install a scroll-event monitor.
+                if active {
+                    HorizontalSwipeCatcher(onChange: change, onEnd: end)
+                }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
     /// The dismiss marker shows on the side that the card uncovers.
@@ -348,7 +381,10 @@ private struct SwipeToDismiss: ViewModifier {
             .accessibilityHidden(true)
     }
 
-    private func change(_ delta: CGFloat) {
+    private func change(_ delta: CGFloat, width: CGFloat) {
+        // Read the width from the native catcher only during a swipe, not
+        // through a SwiftUI geometry observer on every scrolling card.
+        self.width = width
         // Without a dismiss action the card only gives a little, then stops.
         offset += enabled ? delta : delta * 0.15
         if !enabled { offset = max(-24, min(24, offset)) }
@@ -368,104 +404,5 @@ private struct SwipeToDismiss: ViewModifier {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
         }
         armed = false
-    }
-}
-
-/// Reports horizontal two-finger swipes over its area.
-///
-/// SwiftUI drag gestures need a click; a trackpad swipe arrives as scroll
-/// events with phases. A local event monitor watches them. A gesture that
-/// starts mostly horizontal over this view belongs to the swipe and is not
-/// passed on; anything else goes to the scroll view as usual. The view
-/// itself takes no clicks.
-struct HorizontalSwipeCatcher: NSViewRepresentable {
-    var active = true
-    let onChange: (CGFloat) -> Void
-    let onEnd: () -> Void
-
-    func makeNSView(context: Context) -> CatcherView { CatcherView() }
-
-    func updateNSView(_ view: CatcherView, context: Context) {
-        view.active = active
-        view.onChange = onChange
-        view.onEnd = onEnd
-    }
-
-    final class CatcherView: NSView {
-        var active = true
-        var onChange: (CGFloat) -> Void = { _ in }
-        var onEnd: () -> Void = {}
-        private var monitor: Any?
-
-        /// Set by the swipe test: events that it posts itself have no window.
-        static var acceptsWindowlessEvents = false
-
-        private enum Tracking { case idle, deciding, swiping, momentum, ignoring }
-        private var tracking = Tracking.idle
-        private var startX: CGFloat = 0
-        private var startY: CGFloat = 0
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            guard window != nil else { return }
-            // Local monitors run on the main thread.
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
-                nonisolated(unsafe) let incoming = event
-                nonisolated(unsafe) var outgoing: NSEvent? = event
-                MainActor.assumeIsolated { outgoing = self?.handle(incoming) ?? incoming }
-                return outgoing
-            }
-        }
-
-        override func removeFromSuperview() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            super.removeFromSuperview()
-        }
-
-        private func handle(_ event: NSEvent) -> NSEvent? {
-            let ownWindow = event.window === window || (event.window == nil && Self.acceptsWindowlessEvents)
-            guard ownWindow, event.hasPreciseScrollingDeltas else { return event }
-
-            if event.phase == .began {
-                let point = convert(event.locationInWindow, from: nil)
-                tracking = active && bounds.contains(point) ? .deciding : .idle
-                startX = 0
-                startY = 0
-            }
-
-            switch tracking {
-            case .idle, .ignoring:
-                if event.phase == .ended || event.phase == .cancelled { tracking = .idle }
-                return event
-            case .deciding:
-                startX += event.scrollingDeltaX
-                startY += event.scrollingDeltaY
-                if abs(startX) > 6, abs(startX) > abs(startY) * 1.5 {
-                    tracking = .swiping
-                    onChange(startX)
-                    return nil
-                }
-                if abs(startY) > 6 || event.phase == .ended || event.phase == .cancelled { tracking = .ignoring }
-                return event
-            case .swiping:
-                if event.phase == .ended || event.phase == .cancelled {
-                    tracking = .momentum
-                    onEnd()
-                } else {
-                    onChange(event.scrollingDeltaX)
-                }
-                return nil
-            case .momentum:
-                // Swallow the momentum after the fingers lift.
-                if event.momentumPhase.isEmpty && event.phase.isEmpty { tracking = .idle; return event }
-                if event.momentumPhase == .ended { tracking = .idle }
-                return nil
-            }
-        }
     }
 }

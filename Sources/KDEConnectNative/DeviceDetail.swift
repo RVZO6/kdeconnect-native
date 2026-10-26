@@ -26,7 +26,11 @@ struct DeviceDetail: View {
             if device.isPaired && page == .overview {
                 // Cards, not form rows, so that a card can be swiped off.
                 ScrollView {
-                    NotificationCards(device: device)
+                    // Battery, plugin and header updates must not rebuild
+                    // an unchanged notification list.
+                    NotificationCards(deviceId: device.id, isReachable: device.isReachable,
+                                      notifications: device.notifications)
+                        .equatable()
                         .frame(maxWidth: 704)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
