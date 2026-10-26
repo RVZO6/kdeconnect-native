@@ -21,6 +21,7 @@ struct DeviceDetail: View {
     @State private var settingsPlugin: PluginSheetItem?
 
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.sidebarInset) private var sidebarInset
     @State private var overviewScroll = ScrollPosition()
 
     var body: some View {
@@ -61,8 +62,16 @@ struct DeviceDetail: View {
         .toolbar {
             if device.isPaired {
                 ToolbarItem(placement: .principal) {
+                    // The toolbar centres this item on the window. Moving it
+                    // by half the sidebar's width puts it in the centre of
+                    // the page column. It draws its own glass, because the
+                    // toolbar's glass would stay at the unmoved position.
                     PagePicker(selection: selection)
+                        .padding(4)
+                        .glassEffect(.regular, in: .capsule)
+                        .offset(x: sidebarInset / 2)
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in

@@ -45,6 +45,7 @@ struct MainWindow: View {
                 .accessibilityHidden(!sidebarShown)
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .environment(\.sidebarInset, sidebarShown ? sidebarWidth : 0)
                 // Content runs up under the glass toolbar, as in the system apps.
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
@@ -323,4 +324,10 @@ private struct SidebarResizeHandle: View {
             )
             .accessibilityHidden(true)
     }
+}
+
+extension EnvironmentValues {
+    /// The width that the open sidebar takes from the window, so that
+    /// window-wide toolbar items can centre on the page instead.
+    @Entry var sidebarInset: Double = 0
 }
