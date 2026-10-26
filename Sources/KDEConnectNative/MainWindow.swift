@@ -14,25 +14,14 @@ struct MainWindow: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
         } detail: {
             detail
-                // The default opaque title bar band over the detail column
-                // does not line up with the column edge. Let the content
-                // show under the toolbar, as in the system apps.
+                // Content runs up under the glass toolbar, as in the system apps.
                 .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         }
-        .navigationTitle(title)
-        // The title is drawn by the toolbar item below, so that the refresh
-        // button can sit right beside it.
+        // The device page shows the device name in its header, so the
+        // toolbar does not repeat it. The window keeps a title for Mission
+        // Control and the Window menu.
+        .navigationTitle(store.selectedDevice?.name ?? "KDE Connect")
         .toolbar(removing: .title)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.headline)
-                        .lineLimit(1)
-                    RefreshButton()
-                }
-            }
-        }
         .sheet(isPresented: $store.isPairingSheetShown) {
             PairingSheet()
         }
@@ -42,8 +31,6 @@ struct MainWindow: View {
             Text(store.lastError ?? "")
         }
     }
-
-    private var title: String { store.selectedDevice?.name ?? "KDE Connect" }
 
     @ViewBuilder
     private var detail: some View {
@@ -67,70 +54,110 @@ struct MainWindow: View {
 private struct Sidebar: View {
     @Environment(KDEConnectStore.self) private var store
     @Binding var selection: String?
+    @State private var unpairCandidate: Device?
 
     var body: some View {
         List(selection: $selection) {
             if !store.pairingRequests.isEmpty {
                 Section("Pairing Requests") {
-                    ForEach(store.pairingRequests) { DeviceRow(device: $0) }
+                    ForEach(store.pairingRequests) { row($0) }
                 }
             }
             let connected = store.pairedDevices.filter(\.isReachable)
             if !connected.isEmpty {
                 Section("Connected") {
-                    ForEach(connected) { DeviceRow(device: $0) }
+                    ForEach(connected) { row($0) }
                 }
             }
             let remembered = store.pairedDevices.filter { !$0.isReachable }
             if !remembered.isEmpty {
                 Section("Remembered") {
-                    ForEach(remembered) { DeviceRow(device: $0) }
+                    ForEach(remembered) { row($0) }
                 }
             }
             if !store.availableDevices.isEmpty {
                 Section("Available") {
-                    ForEach(store.availableDevices) { DeviceRow(device: $0) }
+                    ForEach(store.availableDevices) { row($0) }
                 }
+            }
+            // Like the "+" after the last tab: a new device goes at the end.
+            Section {
+                AddDeviceRow()
             }
         }
         .listStyle(.sidebar)
-        .toolbar {
-            ToolbarItem {
-                Button("Pair Device…", systemImage: "plus") { store.isPairingSheetShown = true }
-                    .help("Pair a new device")
-                    .disabled(store.status != .connected)
-            }
+        .confirmationDialog("Unpair \(unpairCandidate?.name ?? "")?", isPresented: unpairShown, presenting: unpairCandidate) { device in
+            let id = device.id
+            Button("Unpair", role: .destructive) { store.perform("Unpair") { try await $0.unpair(id) } }
+        } message: { _ in
+            Text("You must pair again before the devices can connect.")
         }
-        .overlay {
-            if store.status == .connected && store.devices.isEmpty {
-                ContentUnavailableView {
-                    Label("No Devices", systemImage: "iphone.slash")
-                } description: {
-                    Text("Open KDE Connect on your other devices.")
-                } actions: {
-                    Button("Pair Device…") { store.isPairingSheetShown = true }
+        .safeAreaBar(edge: .bottom) {
+            ThisMacBar()
+        }
+    }
+
+    private func row(_ device: Device) -> some View {
+        DeviceRow(device: device)
+            .swipeActions(edge: .leading) {
+                if device.isReachable, device.has(.findMyPhone) {
+                    let id = device.id
+                    Button("Ring", systemImage: "speaker.wave.3") { store.perform("Ring") { try await $0.ring(id) } }
+                        .tint(.accentColor)
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                HStack {
-                    Image(systemName: "laptopcomputer").foregroundStyle(.secondary)
-                    Text(store.announcedName.isEmpty ? "This Mac" : store.announcedName)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    SettingsLink {
-                        Image(systemName: "gearshape")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Settings")
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if device.isPaired {
+                    Button("Unpair", systemImage: "link.badge.minus", role: .destructive) { unpairCandidate = device }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
             }
+    }
+
+    private var unpairShown: Binding<Bool> {
+        Binding(get: { unpairCandidate != nil }, set: { if !$0 { unpairCandidate = nil } })
+    }
+}
+
+/// The last row of the device list. It starts pairing a new device.
+private struct AddDeviceRow: View {
+    @Environment(KDEConnectStore.self) private var store
+
+    var body: some View {
+        Button {
+            store.isPairingSheetShown = true
+        } label: {
+            Label("Pair New Device…", systemImage: "plus")
+                .foregroundStyle(.secondary)
         }
+        .buttonStyle(.plain)
+        .disabled(store.status != .connected)
+        .help("Pair a new device")
+    }
+}
+
+/// This Mac's name and the settings button, at the bottom of the sidebar.
+private struct ThisMacBar: View {
+    @Environment(KDEConnectStore.self) private var store
+
+    var body: some View {
+        HStack {
+            Label {
+                Text(store.announcedName.isEmpty ? "This Mac" : store.announcedName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } icon: {
+                Image(systemName: "laptopcomputer").foregroundStyle(.secondary)
+            }
+            Spacer()
+            SettingsLink {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .help("Settings")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 }
 
@@ -161,19 +188,29 @@ private struct DeviceRow: View {
 }
 
 private struct NoDeviceSelectedView: View {
+    @Environment(KDEConnectStore.self) private var store
+
     var body: some View {
         ContentUnavailableView {
             Label("No Device Selected", systemImage: "iphone")
         } description: {
-            Text("Install KDE Connect on your other devices, then select one in the sidebar.")
+            Text("Select a device in the sidebar, or pair a new one. "
+                 + "The other device needs the KDE Connect app.")
         } actions: {
-            HStack {
-                Link("F-Droid", destination: URL(string: "https://f-droid.org/packages/org.kde.kdeconnect_tp/")!)
-                Link("Google Play",
-                     destination: URL(string: "https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp")!)
-                Link("iOS", destination: URL(string: "https://kdeconnect.kde.org/download.html")!)
+            VStack(spacing: 14) {
+                Button("Pair New Device…", systemImage: "plus") { store.isPairingSheetShown = true }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.large)
+                GlassEffectContainer {
+                    HStack {
+                        Link("F-Droid", destination: URL(string: "https://f-droid.org/packages/org.kde.kdeconnect_tp/")!)
+                        Link("Google Play",
+                             destination: URL(string: "https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp")!)
+                        Link("iOS", destination: URL(string: "https://kdeconnect.kde.org/download.html")!)
+                    }
+                    .buttonStyle(.glass)
+                }
             }
-            .buttonStyle(.bordered)
         }
     }
 }
@@ -189,6 +226,7 @@ private struct ServiceUnavailableView: View {
         } actions: {
             if store.status == .daemonStopped {
                 Button("Restart KDE Connect Service") { Task { await store.restartDaemon() } }
+                    .buttonStyle(.glassProminent)
             }
         }
     }
@@ -208,22 +246,5 @@ private struct ServiceUnavailableView: View {
             store.autoStartDaemon ? "The service will start again in a moment." : "Automatic start is off in Settings."
         case .notInstalled: "This app uses the service from KDE Connect.app. Install it in the Applications folder."
         }
-    }
-}
-
-/// Searches the networks again. The arrow spins while the search runs.
-private struct RefreshButton: View {
-    @Environment(KDEConnectStore.self) private var store
-
-    var body: some View {
-        Button {
-            store.refreshNetwork()
-        } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-                .symbolEffect(.rotate.clockwise.byLayer, options: .repeat(.continuous), isActive: store.isRefreshing)
-        }
-        .labelStyle(.iconOnly)
-        .help("Search for devices on all networks again")
-        .disabled(store.status != .connected)
     }
 }

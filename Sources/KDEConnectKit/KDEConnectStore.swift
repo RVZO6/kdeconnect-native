@@ -27,6 +27,10 @@ public final class KDEConnectStore {
     public private(set) var lastError: String?
     public private(set) var linkProviders: [LinkProvider] = []
     public private(set) var customDevices: [String] = []
+    /// Enabled state of each supported plugin, by device ID. The store loads
+    /// it in the background, so that a device page has it from the first frame.
+    public private(set) var pluginStates: [String: [String: Bool]] = [:]
+    @ObservationIgnored private var stalePluginStates: Set<String> = []
     /// The device that the main window shows.
     public var selectedDeviceId: String?
     /// True while the main window shows the pairing sheet.
@@ -260,6 +264,10 @@ public final class KDEConnectStore {
 
     private func handleSignal(_ message: DBusMessage) {
         guard message.sender != nil else { return }
+        // The daemon emits pluginsChanged on /modules/kdeconnect/devices/<id>.
+        if message.member == "pluginsChanged", let id = message.path?.split(separator: "/").last {
+            stalePluginStates.insert(String(id))
+        }
         scheduleRefresh()
     }
 
@@ -288,6 +296,18 @@ public final class KDEConnectStore {
             for id in ids {
                 if let device = try? await client.device(id) { result.append(device) }
             }
+            // Plugin states change rarely, so read them only for new devices,
+            // after a pluginsChanged signal, or when the plugin list changes.
+            var states = pluginStates
+            for device in result where device.isPaired {
+                let cached = states[device.id]
+                guard cached == nil || stalePluginStates.contains(device.id)
+                        || Set(cached!.keys) != Set(device.supportedPlugins) else { continue }
+                if let loaded = try? await client.pluginStates(device.id, plugins: device.supportedPlugins) {
+                    states[device.id] = loaded
+                    stalePluginStates.remove(device.id)
+                }
+            }
             let providers = (try? await client.linkProviders()) ?? linkProviders
             let custom = (try? await client.customDevices()) ?? customDevices
             let name = (try? await client.announcedName()) ?? announcedName
@@ -295,6 +315,7 @@ public final class KDEConnectStore {
             linkProviders = providers
             customDevices = custom
             announcedName = name
+            pluginStates = states
             devices = result.sorted { a, b in
                 if a.isReachable != b.isReachable { return a.isReachable }
                 return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
@@ -375,11 +396,6 @@ public final class KDEConnectStore {
     }
 
     /// Reads which plugins are enabled for a device. Nil when not connected.
-    public func pluginStates(for device: Device) async -> [String: Bool]? {
-        guard let client else { return nil }
-        return try? await client.pluginStates(device.id, plugins: device.supportedPlugins)
-    }
-
     /// Writes plugin settings, then tells the daemon to read them again.
     public func savePluginConfig(_ config: PluginConfig, _ changes: [String: PluginConfig.Value]) {
         do {
@@ -400,6 +416,9 @@ public final class KDEConnectStore {
     }
 
     public func setPluginEnabled(deviceId: String, plugin: String, enabled: Bool) {
+        // Show the change at once; the pluginsChanged signal confirms it.
+        pluginStates[deviceId, default: [:]][plugin] = enabled
+        stalePluginStates.insert(deviceId)
         perform("Change plugin") { try await $0.setPluginEnabled(deviceId, plugin: plugin, enabled: enabled) }
     }
 

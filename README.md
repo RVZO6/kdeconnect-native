@@ -23,11 +23,12 @@ and restarts the daemon when it is missing or on a dead bus.
 ## Features
 
 - **Main window** (replaces `kdeconnect-app`): devices in a sidebar
-  (connected, remembered, available, pairing requests). The device page
-  shows battery, network, Ring, Ping, Send clipboard, Send files (button or
-  drop files on the window), Messages, phone notifications (dismiss and
-  reply), plugin toggles, verification key and addresses. Pair, accept,
-  reject and unpair.
+  (connected, remembered, available, pairing requests), with "Pair New
+  Device…" as the last row and swipe actions (Ring, Unpair). The device
+  page has a header with status, battery and a refresh button, then tabs:
+  Overview (glass action buttons: Ring, Ping, Send clipboard, Send files,
+  Messages; notifications with dismiss and reply), Plugins (switches and
+  settings) and Details. Drop files on the window to send them.
 - **Plugin settings**: the gear next to a plugin opens its settings, the
   same set as the stock app: clipboard (auto share, passwords, file size),
   share (download folder), run commands (commands that devices can run on
@@ -46,7 +47,7 @@ and restarts the daemon when it is missing or on a dead bus.
 
 ## Requirements
 
-- macOS 15 or later.
+- macOS 27 or later.
 - KDE Connect.app (the official build) in `/Applications`. Tested with 26.08.
 
 ## Build and install

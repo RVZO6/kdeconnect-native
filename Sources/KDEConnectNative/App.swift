@@ -81,6 +81,8 @@ struct StatusIcon: View {
 final class WindowOpener {
     static let shared = WindowOpener()
     var open: (() -> Void)?
+    /// Set at launch; used by the debug capture to select a device.
+    var store: KDEConnectStore?
     private var closeObserver: NSObjectProtocol?
 
     var isMainWindowVisible: Bool { NSApp.windows.contains { Self.isMainWindow($0) && $0.isVisible } }
@@ -125,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Starts the supervisor. A launch by the user opens the window; a
     /// launch at login stays in the menu bar.
     func didLaunch(store: KDEConnectStore) async {
+        WindowOpener.shared.store = store
         store.start()
         let args = CommandLine.arguments
         if let index = args.firstIndex(of: "--snapshot"), index + 1 < args.count {
@@ -250,7 +253,19 @@ enum SidebarTest {
     /// Opens the main window and saves an image of it, title bar included.
     static func captureWindow(to path: String) async {
         WindowOpener.shared.showMainWindow()
-        try? await Task.sleep(for: .seconds(3))
+        try? await Task.sleep(for: .seconds(2))
+        if let store = WindowOpener.shared.store {
+            store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
+        }
+        try? await Task.sleep(for: .seconds(1.5))
+        if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) {
+            // A real screen capture shows Liquid Glass; cacheDisplay does not.
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path.replacingOccurrences(of: ".png", with: "-screen.png")]
+            try? task.run()
+            task.waitUntilExit()
+        }
         if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
            let frame = window.contentView?.superview,
            let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) {
