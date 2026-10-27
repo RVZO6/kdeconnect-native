@@ -1,5 +1,14 @@
 Early alpha of the native SwiftUI front end for KDE Connect.
 
+## Changes in 0.0.1-alpha.2
+
+- Fixed: the bundled daemon no longer stops at start when the stock KDE
+  Connect app is not installed. macOS now asks once for Bluetooth access for
+  **KDE Connect Native**.
+- The download is about half the size (67 MB, was 136 MB). Parts of the bundled
+  KDE Connect app that this app does not use are removed.
+- Messages from the daemon, such as notifications, are now in English only.
+
 ## Requirements and installation
 
 - Apple Silicon Mac with macOS 27 or later. Intel Macs are not supported by this build.
