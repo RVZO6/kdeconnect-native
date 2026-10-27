@@ -81,7 +81,9 @@ struct PairingSheet: View {
     }
 
     private func add() {
-        store.addCustomDevice(address)
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        store.addCustomDevice(trimmed)
         address = ""
         store.refreshNetwork()
     }

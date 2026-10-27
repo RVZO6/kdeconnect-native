@@ -60,9 +60,17 @@ if "$install"; then
     rm -rf "$dest"
     cp -R "$app" "$dest"
     # LaunchServices can still refuse right after a replace (-600); try again.
-    for attempt in 1 2 3; do
-        open "$dest" 2>/dev/null && break
+    launched=false
+    for _ in 1 2 3; do
+        if open "$dest"; then
+            launched=true
+            break
+        fi
         sleep 1
     done
-    echo "Installed $dest"
+    if ! "$launched"; then
+        echo "Installed $dest, but could not open it after three attempts" >&2
+        exit 1
+    fi
+    echo "Installed and opened $dest"
 fi

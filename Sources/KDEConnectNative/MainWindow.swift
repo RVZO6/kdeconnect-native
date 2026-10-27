@@ -309,9 +309,7 @@ private struct SidebarResizeHandle: View {
             .frame(width: 8)
             .contentShape(Rectangle())
             .offset(x: 4)
-            .onHover { inside in
-                if inside { NSCursor.columnResize.push() } else { NSCursor.pop() }
-            }
+            .pointerStyle(.columnResize)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in

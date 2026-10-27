@@ -1,4 +1,5 @@
 import DBusKit
+import Darwin
 import Foundation
 
 /// Settings of one plugin for one device, as KDE Connect stores them.
@@ -66,11 +67,38 @@ public struct PluginConfig: Sendable {
         case string(String)
     }
 
+    // Serialize native callers, including separate PluginConfig values for one file.
+    private static let writeLock = NSLock()
+
     /// Writes `changes` into `[General]` and keeps every other key and section.
     public func write(_ changes: [String: Value]) throws {
+        try Self.writeLock.withLock { try writeLocked(changes) }
+    }
+
+    private func writeLocked(_ changes: [String: Value]) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var ini = IniFile(text: (try? String(contentsOf: fileURL, encoding: .utf8)) ?? "")
+        // Coordinate separate native app processes too. This lock does not claim
+        // to coordinate Qt writers, which use QLockFile rather than flock.
+        let fd = open(fileURL.path + ".native.lock", O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { close(fd) }
+        let deadline = ContinuousClock.now + .milliseconds(500)
+        while flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            let code = errno
+            guard (code == EWOULDBLOCK || code == EINTR), ContinuousClock.now < deadline else {
+                throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+            }
+            usleep(10_000)
+        }
+        defer { flock(fd, LOCK_UN) }
+        let text: String
+        do {
+            text = try String(contentsOf: fileURL, encoding: .utf8)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            text = ""
+        }
+        var ini = IniFile(text: text)
         for (key, value) in changes.sorted(by: { $0.key < $1.key }) {
             ini.set(IniFile.encode(value), for: key, in: "General")
         }

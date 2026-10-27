@@ -1,3 +1,4 @@
+import Darwin
 import KDEConnectKit
 import ServiceManagement
 import SwiftUI
@@ -150,10 +151,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
         let args = CommandLine.arguments
-        if args.contains("--ui-benchmark"), !args.contains("--demo") {
-            print("--ui-benchmark requires --demo; no live device data is used")
-            NSApp.terminate(nil)
-            return
+        if let index = args.firstIndex(of: "--ui-benchmark") {
+            guard args.contains("--demo") else {
+                print("--ui-benchmark requires --demo; no live device data is used")
+                exit(EXIT_FAILURE)
+            }
+            guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else {
+                print("--ui-benchmark requires an output path")
+                exit(EXIT_FAILURE)
+            }
         }
         if args.contains("--demo") {
             func count(after flag: String) -> Int? {
@@ -240,6 +246,12 @@ extension Device.Kind {
 /// Wraps the main-app login item so that the toggle reflects the real state.
 enum LoginItem {
     static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+    static var requiresApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+    static var isRegistered: Bool { isRegistered(status: SMAppService.mainApp.status) }
+
+    static func isRegistered(status: SMAppService.Status) -> Bool {
+        status == .enabled || status == .requiresApproval
+    }
 
     static func set(_ enabled: Bool) throws {
         if enabled {

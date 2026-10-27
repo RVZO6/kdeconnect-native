@@ -1,5 +1,6 @@
 import AppKit
 import DBusKit
+import Darwin
 import Foundation
 
 /// Finds the KDE Connect bundle and its private session bus.
@@ -58,12 +59,28 @@ public struct DaemonLocator: Sendable {
 
     /// The address that the most recent daemon wrote, if its socket exists.
     public func currentBusAddress() -> String? {
-        guard let text = try? String(contentsOfFile: Self.addressFile, encoding: .utf8) else { return nil }
+        Self.currentBusAddress(at: Self.addressFile)
+    }
+
+    /// Open without following a symlink, then validate and read the same file.
+    /// Nonblocking mode also prevents an untrusted FIFO from blocking startup.
+    static func currentBusAddress(at addressFile: String, userID: uid_t = getuid()) -> String? {
+        let fd = open(addressFile, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return nil }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var fileInfo = stat()
+        guard fstat(fd, &fileInfo) == 0,
+              (fileInfo.st_mode & S_IFMT) == S_IFREG, fileInfo.st_uid == userID,
+              (fileInfo.st_mode & 0o022) == 0,
+              let data = try? handle.read(upToCount: 4097), data.count <= 4096,
+              let text = String(data: data, encoding: .utf8) else { return nil }
         let address = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !address.isEmpty else { return nil }
         guard let socketPath = try? DBusAddress.unixPath(address) else { return nil }
         var info = stat()
-        guard stat(socketPath, &info) == 0, (info.st_mode & S_IFMT) == S_IFSOCK else { return nil }
+        guard lstat(socketPath, &info) == 0, (info.st_mode & S_IFMT) == S_IFSOCK,
+              info.st_uid == userID else { return nil }
         return address
     }
 }

@@ -398,13 +398,13 @@ extension Notification.Name {
 /// The selected tab of a device view.
 @MainActor
 @Observable
-private final class PageSelection {
+final class PageSelection {
     var page: DeviceDetail.Page = .overview
 }
 
 /// One device page. It stays built while hidden; only this small view
 /// updates when the tab changes, not the page inside it.
-private struct PageSlot<Content: View>: View {
+struct PageSlot<Content: View>: View {
     let selection: PageSelection
     let page: DeviceDetail.Page
     @ViewBuilder let content: Content
@@ -414,6 +414,7 @@ private struct PageSlot<Content: View>: View {
         content
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
+            .disabled(!visible)
             .accessibilityHidden(!visible)
     }
 }

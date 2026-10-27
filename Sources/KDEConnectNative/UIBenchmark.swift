@@ -40,23 +40,20 @@ enum UIBenchmark {
     static func run(to path: String) async {
         guard CommandLine.arguments.contains("--demo") else {
             print("--ui-benchmark requires --demo; no live device data is used")
-            NSApp.terminate(nil)
-            return
+            exit(EXIT_FAILURE)
         }
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(2))
         guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) else {
             print("UI benchmark: no main window")
-            NSApp.terminate(nil)
-            return
+            exit(EXIT_FAILURE)
         }
         window.setContentSize(NSSize(width: 900, height: 640))
         window.acceptsMouseMovedEvents = true
         try? await Task.sleep(for: .seconds(1))
         guard let scrollView = notificationScrollView(in: window) else {
             print("UI benchmark: no notification scroll view")
-            NSApp.terminate(nil)
-            return
+            exit(EXIT_FAILURE)
         }
         HorizontalSwipeCatcher.CatcherView.acceptsWindowlessEvents = true
         var measurements: [Measurement] = []
@@ -157,6 +154,7 @@ enum UIBenchmark {
             print("UI benchmark saved to \(path)")
         } catch {
             print("UI benchmark could not save results: \(error)")
+            exit(EXIT_FAILURE)
         }
         NSApp.terminate(nil)
     }

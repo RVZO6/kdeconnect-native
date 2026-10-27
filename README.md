@@ -86,6 +86,7 @@ Scripts/build-app.sh                       # uses an installed KDE Connect app
 Scripts/build-app.sh --bundle-kdeconnect   # downloads and includes KDE Connect
 Scripts/build-app.sh --bundle-kdeconnect --install  # copies to ~/Applications and opens it
 swift test                                 # unit and regression tests
+bash Tests/Scripts/build-app-tests.sh       # isolated install/launch retry tests
 Scripts/package-release.sh                 # self-contained arm64 ZIP + SHA-256
 Scripts/verify-release.sh                  # verify ZIP and relocated private bus
 ```

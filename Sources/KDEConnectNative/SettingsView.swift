@@ -16,7 +16,7 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @Environment(KDEConnectStore.self) private var store
     @State private var name = ""
-    @State private var launchAtLogin = LoginItem.isEnabled
+    @State private var launchAtLogin = LoginItem.isRegistered
     @AppStorage("keepWindowOnTop") private var keepWindowOnTop = false
     @State private var loginError: String?
 
@@ -33,17 +33,21 @@ private struct GeneralSettings: View {
             Section {
                 Toggle("Open at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
-                        guard enabled != LoginItem.isEnabled else { return }
+                        guard enabled != LoginItem.isRegistered else { return }
                         do {
                             try LoginItem.set(enabled)
                             loginError = nil
                         } catch {
                             loginError = error.localizedDescription
-                            launchAtLogin = LoginItem.isEnabled
+                            launchAtLogin = LoginItem.isRegistered
                         }
                     }
                 if let loginError {
                     Text(loginError).font(.caption).foregroundStyle(.red)
+                }
+                if launchAtLogin && LoginItem.requiresApproval {
+                    Text("Allow the app in System Settings › General › Login Items.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Toggle("Keep window on top", isOn: $keepWindowOnTop)
             } footer: {
@@ -107,7 +111,9 @@ private struct ConnectionSettings: View {
     }
 
     private func add() {
-        store.addCustomDevice(newAddress)
+        let trimmed = newAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        store.addCustomDevice(trimmed)
         newAddress = ""
     }
 }
