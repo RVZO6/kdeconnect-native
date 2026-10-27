@@ -24,6 +24,10 @@
     <string>27.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>KDE Connect can use Bluetooth to find and connect to your devices.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>KDE Connect uses the local network to find and connect to your devices.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Native macOS front end for the KDE Connect daemon.</string>
 </dict>
