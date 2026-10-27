@@ -91,7 +91,7 @@ private struct ConnectionSettings: View {
                 HStack {
                     TextField("IP address or host name", text: $newAddress)
                         .onSubmit(add)
-                    Button("Add", action: add).disabled(newAddress.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button("Add", action: add).disabled(newAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Button("Remove") {
                         if let selectedAddress { store.removeCustomDevice(selectedAddress) }
                         selectedAddress = nil
