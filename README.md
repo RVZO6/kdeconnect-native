@@ -153,10 +153,12 @@ you want an automated review.
 | `KDEConnectNative` | The SwiftUI app: main window, settings and menu bar menu. |
 | `dbus-probe` | Development tool: `dbus-probe introspect <path>` and `dbus-probe call <path> <iface> <member> [args]`. |
 
-The app starts `kdeconnectd` and `dbus-daemon` with `posix_spawn` and
-disclaims responsibility for them. macOS then applies the privacy permissions
-(Bluetooth, local network) of KDE Connect.app, not of this app. Without
-this, TCC stops `kdeconnectd` because this app does not declare Bluetooth use.
+The app starts `kdeconnectd` and `dbus-daemon` with `posix_spawn` and stays
+responsible for them. macOS then applies the privacy permissions (Bluetooth,
+local network) of this app, so its Info.plist declares Bluetooth and local
+network use. Do not disclaim responsibility: `kdeconnectd` is a bare
+executable without a bound Info.plist, so TCC stops it when it must ask for
+Bluetooth access.
 
 ## Debugging
 

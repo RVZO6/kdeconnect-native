@@ -3,21 +3,12 @@ import Foundation
 
 /// Starts helper processes that are independent of this app.
 ///
-/// macOS charges privacy (TCC) checks to the "responsible" process, which is
-/// normally the app that started the child. kdeconnectd uses Bluetooth and
-/// the local network, so it must be responsible for itself, the same as when
-/// the stock KDE Connect launcher starts it. Otherwise TCC kills it, because
-/// this app does not declare those usages. Terminal apps solve the same
-/// problem with `responsibility_spawnattrs_setdisclaim`.
+/// macOS charges privacy (TCC) checks to the "responsible" process. This app
+/// stays responsible for kdeconnectd, so its Info.plist declares Bluetooth
+/// use. A disclaimed kdeconnectd is responsible for itself, but it is a bare
+/// executable without a bound Info.plist, so TCC stops it when it must ask
+/// for Bluetooth access.
 enum DetachedSpawn {
-    private typealias DisclaimFunction = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
-
-    private static let disclaim: DisclaimFunction? = {
-        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim")
-        else { return nil }
-        return unsafeBitCast(symbol, to: DisclaimFunction.self)
-    }()
-
     /// Spawns `executable` in a new session. Its stdout goes to `stdout`
     /// (or the log), and its stderr goes to `stderr`. The child is reaped on
     /// a background thread so that it does not stay as a zombie.
@@ -27,7 +18,6 @@ enum DetachedSpawn {
         posix_spawnattr_init(&attr)
         defer { posix_spawnattr_destroy(&attr) }
         posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT))
-        _ = disclaim?(&attr, 1)
 
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)

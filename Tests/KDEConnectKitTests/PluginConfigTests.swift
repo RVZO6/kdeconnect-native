@@ -84,7 +84,10 @@ import Testing
         defer { released.wait(); close(fd) }
         #expect(flock(fd, LOCK_EX | LOCK_NB) == 0)
         released.enter()
-        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(20)) {
+        // A dedicated thread, because parallel tests can fill the GCD pool for
+        // longer than the 500 ms retry window.
+        Thread.detachNewThread {
+            usleep(20_000)
             flock(fd, LOCK_UN)
             released.leave()
         }
