@@ -420,6 +420,13 @@ private struct SwipeToDismiss: ViewModifier {
                     HorizontalSwipeCatcher(onChange: change, onEnd: end)
                 }
             }
+            .onChange(of: active) { _, isActive in
+                // A cleared stack can remain in the tree with ongoing cards.
+                if !isActive {
+                    armed = false
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { offset = 0 }
+                }
+            }
     }
 
     /// The dismiss marker shows on the side that the card uncovers.

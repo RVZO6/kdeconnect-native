@@ -32,7 +32,9 @@ jobs:
           path: build/upstream/*.dmg
           key: kdeconnect-arm64-${{ hashFiles('Scripts/kdeconnect-version.env') }}
       - name: Test
-        run: swift test
+        run: |
+          swift test
+          bash Tests/Scripts/build-app-tests.sh
       - name: Package app with pre-built KDE Connect
         env:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}

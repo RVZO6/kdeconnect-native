@@ -39,7 +39,7 @@ struct PairingSheet: View {
                         TextField("IP address of the other device", text: $address)
                             .onSubmit(add)
                         Button("Add", action: add)
-                            .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .disabled(address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     if !addresses.isEmpty {
                         LabeledContent("Or add this Mac on the other device") {
@@ -81,7 +81,9 @@ struct PairingSheet: View {
     }
 
     private func add() {
-        store.addCustomDevice(address)
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        store.addCustomDevice(trimmed)
         address = ""
         store.refreshNetwork()
     }

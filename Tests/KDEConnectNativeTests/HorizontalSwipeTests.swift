@@ -1,4 +1,6 @@
 import AppKit
+import Observation
+import SwiftUI
 import Testing
 @testable import KDEConnectNative
 
@@ -31,6 +33,58 @@ struct HorizontalSwipeTests {
         let view = HorizontalSwipeCatcher.CatcherView(frame: NSRect(x: 0, y: 0, width: 200, height: 200))
         window.contentView?.addSubview(view)
         return view
+    }
+
+    @Observable final class SwipeVisibility {
+        var active = true
+        var dismissals = 0
+    }
+
+    private final class PositionView: NSView {}
+
+    private struct PositionProbe: NSViewRepresentable {
+        func makeNSView(context: Context) -> PositionView { PositionView() }
+        func updateNSView(_ view: PositionView, context: Context) {}
+    }
+
+    private struct SurvivingSwipe: View {
+        let state: SwipeVisibility
+        var body: some View {
+            PositionProbe()
+                .frame(width: 300, height: 100)
+                .swipeToDismiss(enabled: true, active: state.active) {
+                    state.dismissals += 1
+                    state.active = false
+                }
+        }
+    }
+
+    private func descendants(of view: NSView) -> [NSView] {
+        [view] + view.subviews.flatMap { descendants(of: $0) }
+    }
+
+    @Test func survivingStackReturnsAfterDismissal() async throws {
+        let window = window()
+        let state = SwipeVisibility()
+        let host = NSHostingView(rootView: SurvivingSwipe(state: state))
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        let catcher = try #require(descendants(of: host).compactMap {
+            $0 as? HorizontalSwipeCatcher.CatcherView
+        }.first)
+        let probe = try #require(descendants(of: host).compactMap { $0 as? PositionView }.first)
+        let initialX = probe.convert(probe.bounds, to: host).minX
+        catcher.onChange(200, 300)
+        catcher.onEnd()
+        // Let both the dismissal and the restoration spring finish.
+        try await Task.sleep(for: .seconds(1))
+        host.layoutSubtreeIfNeeded()
+        #expect(state.dismissals == 1)
+        #expect(!state.active)
+        #expect(probe.isDescendant(of: host))
+        #expect(abs(probe.convert(probe.bounds, to: host).minX - initialX) < 1)
     }
 
     @Test func sharesOneMonitorAndRemovesIt() {

@@ -33,8 +33,10 @@ The baseline uses `2333259` with the same demo and measurement harness.
 Each run scrolls approximately 3,360 points. The maximum input interval
 still varies; this change does not remove every delay.
 
-These historical runs used the earlier two-phase harness. The current
-benchmark selects the notification scroll view, accounts for safe-area
+These historical runs used the two-phase harness in `3f36696`
+(`Sources/KDEConnectNative/UIBenchmark.swift`). The baseline is `2333259`
+with that same demo and harness applied; it is not the unmodified baseline.
+The current benchmark selects the notification scroll view, accounts for safe-area
 insets, reverses at the scroll edges, and also posts hover events. Do not
 compare new timings directly with the historical table.
 
@@ -81,11 +83,19 @@ Raw samples and environment details are in [Results/2026-10-26.json](Results/202
 ## Repeat the measurements
 
 ```sh
+set -e
 swift build -c release --product KDEConnectNative
 bin="$(swift build -c release --show-bin-path)/KDEConnectNative"
 for run in 1 2 3; do
   "$bin" --demo --demo-notifications 25 --demo-apps 5 --demo-reply-every 3 \
     --ui-benchmark "/tmp/kdeconnect-ui-$run.json"
+done
+
+# Same fixture size as the historical table, using the current harness.
+# Omit --demo-reply-every to retain the original all-replyable fixture.
+for run in 1 2 3; do
+  "$bin" --demo --demo-notifications 300 --demo-apps 20 \
+    --ui-benchmark "/tmp/kdeconnect-ui-300-$run.json"
 done
 
 KDECONNECT_PERF=1 swift test -c release --filter ConcurrentReadTests
