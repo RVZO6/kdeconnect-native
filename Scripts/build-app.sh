@@ -33,8 +33,9 @@ xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$app/Contents/Resourc
 rm -f "$partial"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" \
     -c "Add :CFBundleIconName string AppIcon" "$app/Contents/Info.plist"
-# Keep the full upstream bundle and its signatures, Qt plugins, and licenses.
-# Do not use codesign --deep to re-sign third-party code.
+# Copy the upstream bundle, then remove what the daemon and the SMS app do not
+# use. The remaining binaries keep their upstream signatures. Do not use
+# codesign --deep to re-sign third-party code.
 if "$bundle"; then
     upstream="${KDECONNECT_APP_PATH:-}"
     if [[ -z "$upstream" ]]; then upstream="$(Scripts/fetch-kdeconnect.sh)"; fi
@@ -45,6 +46,7 @@ if "$bundle"; then
     codesign --verify --deep --strict "$upstream"
     mkdir -p "$app/Contents/Helpers"
     ditto "$upstream" "$app/Contents/Helpers/KDE Connect.app"
+    Scripts/prune-kdeconnect.sh "$app/Contents/Helpers/KDE Connect.app"
     cp Resources/ThirdPartyNotices.txt "$app/Contents/Resources/"
 fi
 codesign --force --sign - --timestamp=none "$app"
