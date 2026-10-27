@@ -56,6 +56,8 @@ while true; do
     removed=false
     # Other entries, such as ossl-modules, are data that libraries load by path.
     for entry in Frameworks/*.dylib Frameworks/*.framework; do
+        # An unmatched glob stays literal; it must not count as a removal.
+        [[ -e "$entry" || -L "$entry" ]] || continue
         if ! grep -qxF "$(basename "$entry")" <<<"$keep"; then
             rm -rf "$entry"
             removed=true
