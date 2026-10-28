@@ -110,7 +110,7 @@ public struct KDEConnectClient: Sendable {
         let result = await concurrentRead(ids, limit: 8) { nid -> PhoneNotification? in
             guard let p = try? await properties("\(base)/\(nid)", "org.kde.kdeconnect.device.notifications.notification")
             else { return nil }
-            return PhoneNotification(id: nid, properties: p)
+            return notificationForDisplay(id: nid, properties: p)
         }
         // Higher public IDs are newer.
         return result.compactMap { $0 }.sorted { (Int($0.id) ?? 0) > (Int($1.id) ?? 0) }
@@ -182,4 +182,11 @@ public struct KDEConnectClient: Sendable {
         _ = try await call(Self.pluginPath(deviceId, "notifications"), "org.kde.kdeconnect.device.notifications",
                            "sendReply", [.string(replyId), .string(message)])
     }
+}
+
+/// Exclude non-dismissible items, such as ongoing playback controls.
+/// Keep items with missing or invalid dismissibility data rather than hide them.
+func notificationForDisplay(id: String, properties: [String: DBusValue]) -> PhoneNotification? {
+    guard properties["dismissable"]?.boolValue != false else { return nil }
+    return PhoneNotification(id: id, properties: properties)
 }
