@@ -73,6 +73,8 @@ public struct DaemonProcess: Sendable {
 
     public var isDaemonRunning: Bool { !daemonProcesses.isEmpty }
 
+    var daemonPID: pid_t? { daemonProcesses.first?.0.pid }
+
     /// Starts a private session bus with the bundled dbus-daemon, the same
     /// way the stock KDE Connect launcher does, and publishes its address in
     /// the address file so that the other KDE Connect tools find it.

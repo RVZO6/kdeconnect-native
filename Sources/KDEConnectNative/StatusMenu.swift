@@ -97,7 +97,6 @@ enum FileSender {
 
     @MainActor
     static func send(_ urls: [URL], to device: Device, store: KDEConnectStore) {
-        let id = device.id
-        store.perform("Send files") { try await $0.share(id, urls: urls) }
+        store.sendFiles(urls, to: device.id)
     }
 }

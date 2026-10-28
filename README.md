@@ -42,8 +42,9 @@ and restarts the daemon when it is missing or on a dead bus.
   (glass buttons: Ring, Ping, Send clipboard, Send files, Messages), then
   tabs: Overview (notification cards: swipe a card off to either side with
   two fingers to dismiss it; reply on hover or from the context menu),
-  Plugins (switches and settings) and Details. Drop files on the window to
-  send them.
+  Plugins (switches and settings) and Details. Point at an action to see
+  its name. Drop files on the window to send them: the page fades to a drop
+  area, and a ring next to the actions shows the upload progress.
 - **Plugin settings**: the gear next to a plugin opens its settings, the
   same set as the stock app: clipboard (auto share, passwords, file size),
   share (download folder), run commands (commands that devices can run on

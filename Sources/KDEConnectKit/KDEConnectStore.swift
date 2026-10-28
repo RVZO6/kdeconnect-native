@@ -347,6 +347,81 @@ public final class KDEConnectStore {
 
     public func clearError() { lastError = nil }
 
+    // MARK: File transfers
+
+    /// The latest file transfer to each device, by device ID. A transfer stays
+    /// for a moment after it ends, so that the window can show the result.
+    public private(set) var transfers: [String: FileTransfer] = [:]
+
+    /// Sends files and follows the progress. Files sent while a transfer to
+    /// the same device runs join that transfer, as the daemon queues them.
+    public func sendFiles(_ urls: [URL], to deviceId: String) {
+        guard !urls.isEmpty else { return }
+        let transfer: FileTransfer
+        if let running = transfers[deviceId], running.phase == .sending {
+            transfer = running
+        } else {
+            transfers[deviceId]?.watcher?.cancel()
+            transfer = FileTransfer(deviceId: deviceId)
+            transfers[deviceId] = transfer
+        }
+        transfer.append(urls)
+        if isDemo {
+            watch(transfer, pid: nil)
+            return
+        }
+        guard let client else {
+            lastError = "Send files failed: KDE Connect is not running"
+            transfer.fail("KDE Connect is not running.")
+            watch(transfer, pid: nil)
+            return
+        }
+        Task {
+            do {
+                try await client.share(deviceId, urls: urls)
+                lastError = nil
+            } catch {
+                lastError = "Send files failed: \(error)"
+                transfer.fail("Could not send the files.")
+            }
+            scheduleRefresh()
+        }
+        watch(transfer, pid: process.daemonPID)
+    }
+
+    /// Reads the daemon's progress ten times a second until the transfer
+    /// ends, then removes it after a short time.
+    private func watch(_ transfer: FileTransfer, pid: pid_t?) {
+        guard transfer.watcher == nil else { return }
+        let demo = isDemo
+        transfer.watcher = Task { [weak self] in
+            var pid = pid
+            while !Task.isCancelled, transfer.phase == .sending {
+                try? await Task.sleep(for: .milliseconds(100))
+                if demo {
+                    transfer.advanceDemo(by: max(1, transfer.totalBytes / 40))
+                    continue
+                }
+                var snapshot = pid.flatMap(ProcessFiles.snapshot)
+                if snapshot == nil {
+                    // The daemon restarted, or the first lookup failed.
+                    pid = self?.process.daemonPID
+                    snapshot = pid.flatMap(ProcessFiles.snapshot)
+                }
+                guard let snapshot else {
+                    transfer.fail("KDE Connect stopped.")
+                    break
+                }
+                transfer.apply(transfer.tracker.update(offsets: snapshot.offsets,
+                                                       listening: snapshot.isListeningForUpload, now: .now))
+            }
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(for: transfer.phase == .finished ? .seconds(2) : .seconds(6))
+            guard !Task.isCancelled, let self, self.transfers[transfer.deviceId] === transfer else { return }
+            self.transfers[transfer.deviceId] = nil
+        }
+    }
+
     /// True in demo mode, where daemon calls do nothing.
     @ObservationIgnored private var isDemo = false
 
