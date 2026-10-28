@@ -367,13 +367,13 @@ public final class KDEConnectStore {
         }
         transfer.append(urls)
         if isDemo {
-            watch(transfer, pid: nil)
+            watch(transfer)
             return
         }
         guard let client else {
             lastError = "Send files failed: KDE Connect is not running"
             transfer.fail("KDE Connect is not running.")
-            watch(transfer, pid: nil)
+            watch(transfer)
             return
         }
         Task {
@@ -386,29 +386,28 @@ public final class KDEConnectStore {
             }
             scheduleRefresh()
         }
-        watch(transfer, pid: process.daemonPID)
+        watch(transfer)
     }
 
     /// Reads the daemon's progress ten times a second until the transfer
     /// ends, then removes it after a short time.
-    private func watch(_ transfer: FileTransfer, pid: pid_t?) {
+    private func watch(_ transfer: FileTransfer) {
         guard transfer.watcher == nil else { return }
         let demo = isDemo
+        let process = process
         transfer.watcher = Task { [weak self] in
-            var pid = pid
+            var daemon: DaemonProcess.RunningDaemon?
             while !Task.isCancelled, transfer.phase == .sending {
                 try? await Task.sleep(for: .milliseconds(100))
                 if demo {
                     transfer.advanceDemo(by: max(1, transfer.totalBytes / 40))
                     continue
                 }
-                var snapshot = pid.flatMap(ProcessFiles.snapshot)
-                if snapshot == nil {
-                    // The daemon restarted, or the first lookup failed.
-                    pid = self?.process.daemonPID
-                    snapshot = pid.flatMap(ProcessFiles.snapshot)
-                }
-                guard let snapshot else {
+                let known = daemon
+                let result = await Task.detached { process.fileSnapshot(known) }.value
+                daemon = result?.0
+                guard !Task.isCancelled, transfer.phase == .sending else { break }
+                guard let snapshot = result?.1 else {
                     transfer.fail("KDE Connect stopped.")
                     break
                 }

@@ -151,6 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
         let args = CommandLine.arguments
+        if args.contains("--transfer-test"), !args.contains("--demo") {
+            print("--transfer-test requires --demo; no file is sent to a real device")
+            exit(EXIT_FAILURE)
+        }
         if let index = args.firstIndex(of: "--ui-benchmark") {
             guard args.contains("--demo") else {
                 print("--ui-benchmark requires --demo; no live device data is used")
@@ -544,7 +548,9 @@ enum SidebarTest {
         try? await Task.sleep(for: .milliseconds(500))
         shoot("drop.png")
         NotificationCenter.default.post(name: .debugDropTarget, object: false)
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("Holiday Photos.zip")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("Holiday Photos.zip")
         FileManager.default.createFile(atPath: file.path, contents: Data(count: 4 << 20))
         store.sendFiles([file], to: id)
         try? await Task.sleep(for: .milliseconds(150))
@@ -559,7 +565,7 @@ enum SidebarTest {
         shoot("transfer-done.png")
         try? await Task.sleep(for: .milliseconds(2600))
         shoot("transfer-gone.png")
-        try? FileManager.default.removeItem(at: file)
+        try? FileManager.default.removeItem(at: directory)
         NSApp.terminate(nil)
     }
 
