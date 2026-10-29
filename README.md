@@ -71,7 +71,7 @@ and restarts the daemon when it is missing or on a dead bus.
 ## Download
 
 Get the ZIP from [GitHub Releases](https://github.com/RVZO6/kdeconnect-native/releases).
-The latest release is **0.0.1-alpha.2**, marked as a pre-release. Extract the ZIP
+The latest release is **0.0.1-alpha.3**, marked as a pre-release. Extract the ZIP
 and move **KDE Connect Native.app** to Applications before opening it. The
 release includes KDE Connect; do not install a second copy for this app.
 
