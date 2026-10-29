@@ -298,14 +298,12 @@ private struct NotificationCard: View {
                             Text(notification.appName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                         }
                         if !notification.title.isEmpty {
-                            Text(notification.title).fontWeight(.medium)
+                            NotificationText(text: notification.title, isTitle: true)
                         }
                         if !notification.text.isEmpty {
-                            Text(notification.text).foregroundStyle(.secondary).lineLimit(4)
+                            NotificationText(text: notification.text, lineLimit: 4)
                         }
                     }
-                    // Highlight and copy the text with the pointer.
-                    .textSelection(.enabled)
                     Spacer(minLength: 8)
                     if canReply {
                         NotificationReplyButton(hover: hover, replying: $replying)
