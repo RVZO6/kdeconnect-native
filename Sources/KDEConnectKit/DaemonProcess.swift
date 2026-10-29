@@ -73,6 +73,23 @@ public struct DaemonProcess: Sendable {
 
     public var isDaemonRunning: Bool { !daemonProcesses.isEmpty }
 
+    /// A running kdeconnectd, with the path that `isAlive` checks.
+    struct RunningDaemon: Sendable {
+        let record: ProcessRecord
+        let path: String
+    }
+
+    /// The daemon's open files and sockets. Looks the daemon up again when
+    /// `known` has exited, so that a reused PID never gives the files of
+    /// another process. Lists processes, so call it off the main actor.
+    func fileSnapshot(_ known: RunningDaemon?) -> (RunningDaemon, ProcessFiles.Snapshot)? {
+        let alive = known.flatMap { $0.record.isAlive(executablePath: $0.path) ? $0 : nil }
+        guard let daemon = alive ?? daemonProcesses.first.map({ RunningDaemon(record: $0.0, path: $0.1) }),
+              let snapshot = ProcessFiles.snapshot(pid: daemon.record.pid),
+              daemon.record.isAlive(executablePath: daemon.path) else { return nil }
+        return (daemon, snapshot)
+    }
+
     /// Starts a private session bus with the bundled dbus-daemon, the same
     /// way the stock KDE Connect launcher does, and publishes its address in
     /// the address file so that the other KDE Connect tools find it.

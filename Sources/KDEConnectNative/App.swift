@@ -151,6 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func didLaunch(store: KDEConnectStore) async {
         WindowOpener.shared.store = store
         let args = CommandLine.arguments
+        if args.contains("--transfer-test"), !args.contains("--demo") {
+            print("--transfer-test requires --demo; no file is sent to a real device")
+            exit(EXIT_FAILURE)
+        }
         if let index = args.firstIndex(of: "--ui-benchmark") {
             guard args.contains("--demo") else {
                 print("--ui-benchmark requires --demo; no live device data is used")
@@ -203,6 +207,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if args.contains("--hit-test") {
             await SidebarTest.hitTest()
+            return
+        }
+        if let index = args.firstIndex(of: "--transfer-test"), index + 1 < args.count {
+            await SidebarTest.transferTest(outputDirectory: args[index + 1])
             return
         }
         if args.contains("--tab-test") {
@@ -507,6 +515,57 @@ enum SidebarTest {
                 try? await Task.sleep(for: .milliseconds(35))
             }
         }
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --transfer-test <dir>` shows the hover labels, the
+    /// drop prompt and a demo file transfer, and saves window captures.
+    static func transferTest(outputDirectory: String) async {
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }),
+              let store = WindowOpener.shared.store, let id = store.selectedDeviceId else {
+            NSApp.terminate(nil); return
+        }
+        func shoot(_ name: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        for name in ["Ring", "Send Clipboard"] {
+            NotificationCenter.default.post(name: .debugHoverAction, object: name)
+            try? await Task.sleep(for: .milliseconds(80))
+            shoot("hover-\(name)-mid.png")
+            try? await Task.sleep(for: .milliseconds(400))
+            shoot("hover-\(name).png")
+        }
+        NotificationCenter.default.post(name: .debugHoverAction, object: nil)
+        NotificationCenter.default.post(name: .debugDropTarget, object: true)
+        try? await Task.sleep(for: .milliseconds(100))
+        shoot("drop-mid.png")
+        try? await Task.sleep(for: .milliseconds(500))
+        shoot("drop.png")
+        NotificationCenter.default.post(name: .debugDropTarget, object: false)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("Holiday Photos.zip")
+        FileManager.default.createFile(atPath: file.path, contents: Data(count: 4 << 20))
+        store.sendFiles([file], to: id)
+        try? await Task.sleep(for: .milliseconds(150))
+        shoot("transfer-start.png")
+        try? await Task.sleep(for: .milliseconds(1500))
+        shoot("transfer-mid.png")
+        NotificationCenter.default.post(name: .debugHoverAction, object: "transfer")
+        try? await Task.sleep(for: .milliseconds(400))
+        shoot("transfer-hover.png")
+        NotificationCenter.default.post(name: .debugHoverAction, object: nil)
+        try? await Task.sleep(for: .milliseconds(2300))
+        shoot("transfer-done.png")
+        try? await Task.sleep(for: .milliseconds(2600))
+        shoot("transfer-gone.png")
+        try? FileManager.default.removeItem(at: directory)
         NSApp.terminate(nil)
     }
 

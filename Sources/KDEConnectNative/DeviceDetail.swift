@@ -17,7 +17,7 @@ struct DeviceDetail: View {
     /// switch does not re-evaluate and lay out the whole device view.
     @State private var selection = PageSelection()
     @State private var confirmUnpair = false
-    @State private var dropTargeted = false
+    @State private var drop = DropState()
     @State private var settingsPlugin: PluginSheetItem?
 
     @Environment(\.displayScale) private var displayScale
@@ -28,7 +28,7 @@ struct DeviceDetail: View {
 
     var body: some View {
         let _ = UIBenchmark.recordUpdate("DeviceDetail")
-        Group {
+        DropZone(drop: drop, deviceName: device.name) {
             if device.isPaired {
                 // All three pages stay built; a switch only changes which one
                 // shows. Rebuilding a page on every switch cost 50-75 ms on
@@ -69,6 +69,9 @@ struct DeviceDetail: View {
                     .ignoresSafeArea(edges: .top)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .debugDropTarget)) { note in
+            withAnimation(.snappy(duration: 0.22)) { drop.isTargeted = note.object as? Bool ?? false }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .debugSelectPage)) { note in
             if let name = note.object as? String, let target = Page(rawValue: name) { selection.page = target }
         }
@@ -76,7 +79,7 @@ struct DeviceDetail: View {
         // glass capsule; the page scrolls under them.
         .safeAreaBar(edge: .bottom) {
             if device.isPaired, device.isReachable {
-                actionsBar
+                ActionsBar(device: device)
                     .padding(.bottom, 14)
                     .frame(maxWidth: .infinity)
             }
@@ -101,19 +104,14 @@ struct DeviceDetail: View {
                     .frame(height: 1 / displayScale)
             }
         }
-        .overlay {
-            if dropTargeted {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
-                    .padding(6)
-                    .allowsHitTesting(false)
-            }
-        }
         .dropDestination(for: URL.self) { urls, _ in
             guard canShare else { return false }
             FileSender.send(urls, to: device, store: store)
             return true
-        } isTargeted: { dropTargeted = $0 && canShare }
+        } isTargeted: { targeted in
+            // The same fade as a tab switch.
+            withAnimation(.snappy(duration: 0.22)) { drop.isTargeted = targeted && canShare }
+        }
         .confirmationDialog("Unpair \(device.name)?", isPresented: $confirmUnpair) {
             let id = device.id
             Button("Unpair", role: .destructive) { store.perform("Unpair") { try await $0.unpair(id) } }
@@ -207,40 +205,6 @@ struct DeviceDetail: View {
             }
         } header: {
             Text("Pairing")
-        }
-    }
-
-    /// The device actions as icons in one floating glass capsule.
-    private var actionsBar: some View {
-        let id = device.id
-        return GlassEffectContainer {
-            HStack(spacing: 2) {
-                if device.has(.findMyPhone) {
-                    ActionButton("Ring", symbol: "speaker.wave.3") {
-                        store.perform("Ring") { try await $0.ring(id) }
-                    }
-                }
-                if device.has(.ping) {
-                    ActionButton("Ping", symbol: "dot.radiowaves.left.and.right") {
-                        store.perform("Ping") { try await $0.ping(id) }
-                    }
-                }
-                if device.has(.clipboard) {
-                    ActionButton("Send Clipboard", symbol: "doc.on.clipboard") {
-                        store.perform("Send clipboard") { try await $0.sendClipboard(id) }
-                    }
-                }
-                if device.has(.share) {
-                    ActionButton("Send Files…", symbol: "paperplane") { FileSender.choose(for: device, store: store) }
-                        .help("Choose files to send. You can also drop files on this window.")
-                }
-                if device.has(.sms) {
-                    ActionButton("Messages", symbol: "message") { store.openSMSApp() }
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 
@@ -359,38 +323,16 @@ private struct RefreshButton: View {
     }
 }
 
-private struct ActionButton: View {
-    let title: String
-    let symbol: String
-    let action: () -> Void
-
-    init(_ title: String, symbol: String, action: @escaping () -> Void) {
-        self.title = title
-        self.symbol = symbol
-        self.action = action
-    }
-
-    /// An icon only; the name shows as a tooltip and to VoiceOver.
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 40, height: 34)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(ToolbarGlyphButtonStyle())
-        .foregroundStyle(.primary)
-        .help(title)
-        .accessibilityLabel(title)
-    }
-}
-
 extension Notification.Name {
     /// Debug aid: scrolls the Overview page, so that captures can show
     /// content under the header bar.
     static let debugScrollPage = Notification.Name("KDEConnectNativeDebugScrollPage")
     /// Debug aid: selects a page of the device view by its name.
     static let debugSelectPage = Notification.Name("KDEConnectNativeDebugSelectPage")
+    /// Debug aid: shows the hover label of an action by its name, or hides it.
+    static let debugHoverAction = Notification.Name("KDEConnectNativeDebugHoverAction")
+    /// Debug aid: shows or hides the drop prompt, as a drag over the view would.
+    static let debugDropTarget = Notification.Name("KDEConnectNativeDebugDropTarget")
     /// Debug aid: expands or collapses every notification stack.
     static let debugToggleStacks = Notification.Name("KDEConnectNativeDebugToggleStacks")
 }
@@ -416,6 +358,68 @@ struct PageSlot<Content: View>: View {
             .allowsHitTesting(visible)
             .disabled(!visible)
             .accessibilityHidden(!visible)
+    }
+}
+
+/// True while files are dragged over the device view.
+@MainActor
+@Observable
+final class DropState {
+    var isTargeted = false
+}
+
+/// The device pages, which fade out to a drop prompt while files are
+/// dragged over the view. Only this view updates when the drag comes and
+/// goes, not the pages inside it.
+private struct DropZone<Content: View>: View {
+    let drop: DropState
+    let deviceName: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            content
+                .opacity(drop.isTargeted ? 0 : 1)
+                .allowsHitTesting(!drop.isTargeted)
+            if drop.isTargeted {
+                DropPrompt(deviceName: deviceName)
+                    .transition(.opacity.combined(with: .scale(0.96)))
+            }
+        }
+    }
+}
+
+private struct DropPrompt: View {
+    let deviceName: String
+    @State private var appeared = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "paperplane.fill")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(.tint)
+                .symbolEffect(.bounce.up, value: appeared)
+                .frame(width: 76, height: 76)
+                .glassEffect(.regular.tint(.accentColor.opacity(0.18)), in: .circle)
+            VStack(spacing: 4) {
+                Text("Drop to Send")
+                    .font(.title2.weight(.semibold))
+                Text("The files go to \(deviceName).")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.accentColor.opacity(0.05))
+                .strokeBorder(Color.accentColor.opacity(0.45),
+                              style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .frame(maxWidth: 744)
+        .onAppear { appeared = true }
+        .allowsHitTesting(false)
     }
 }
 
