@@ -8,20 +8,28 @@ import KDEConnectKit
 //   dbus-probe watch <seconds> <path> <interface> <member> [args...]
 // "watch" makes the call, then prints the daemon's signals for some seconds.
 // An argument is a string, or typed with a prefix: i:5, x:5, t:5, b:true,
-// and "av:" for an empty array of variants.
+// and "av:" for an empty array of variants. A typed argument with a value
+// that does not fit its type stops the tool, so that no call goes out with
+// a wrong value.
 
 func argument(_ text: String) -> DBusValue {
-    let parts = text.split(separator: ":", maxSplits: 1).map(String.init)
+    // Keep the empty value of "av:".
+    let parts = text.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
     guard parts.count == 2 else { return .string(text) }
+    let value: DBusValue?
     switch parts[0] {
-    case "i": if let v = Int32(parts[1]) { return .int32(v) }
-    case "x": if let v = Int64(parts[1]) { return .int64(v) }
-    case "t": if let v = UInt64(parts[1]) { return .uint64(v) }
-    case "b": return .bool(parts[1] == "true")
-    case "av" where parts[1].isEmpty: return .array(element: "v", [])
-    default: break
+    case "i": value = Int32(parts[1]).map { .int32($0) }
+    case "x": value = Int64(parts[1]).map { .int64($0) }
+    case "t": value = UInt64(parts[1]).map { .uint64($0) }
+    case "b": value = ["true": true, "false": false][parts[1]].map { .bool($0) }
+    case "av": value = parts[1].isEmpty ? .array(element: "v", []) : nil
+    default: return .string(text)
     }
-    return .string(text)
+    guard let value else {
+        FileHandle.standardError.write("Invalid \(parts[0]) argument: \(parts[1])\n".data(using: .utf8)!)
+        exit(2)
+    }
+    return value
 }
 
 let args = Array(CommandLine.arguments.dropFirst())

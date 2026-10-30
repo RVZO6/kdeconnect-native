@@ -593,6 +593,7 @@ enum SidebarTest {
             NSApp.terminate(nil); return
         }
         let inbox = store.inbox(for: id)
+        try? FileManager.default.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
         func popover() -> NSWindow? {
             NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
         }
