@@ -26,6 +26,8 @@
     <true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>KDE Connect can use Bluetooth to find and connect to your devices.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Messages shows the names and photos of your contacts for the phone numbers in your conversations.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>KDE Connect uses the local network to find and connect to your devices.</string>
     <key>NSHumanReadableCopyright</key>

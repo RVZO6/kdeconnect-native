@@ -33,13 +33,13 @@ xcrun actool "$PWD/Resources/AppIcon.icon" --compile "$PWD/$app/Contents/Resourc
 rm -f "$partial"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" \
     -c "Add :CFBundleIconName string AppIcon" "$app/Contents/Info.plist"
-# Copy the upstream bundle, then remove what the daemon and the SMS app do not
-# use. The remaining binaries keep their upstream signatures. Do not use
-# codesign --deep to re-sign third-party code.
+# Copy the upstream bundle, then remove what the daemon does not use. The
+# remaining binaries keep their upstream signatures. Do not use codesign
+# --deep to re-sign third-party code.
 if "$bundle"; then
     upstream="${KDECONNECT_APP_PATH:-}"
     if [[ -z "$upstream" ]]; then upstream="$(Scripts/fetch-kdeconnect.sh)"; fi
-    for executable in kdeconnectd dbus-daemon kdeconnect-sms; do
+    for executable in kdeconnectd dbus-daemon; do
         test -x "$upstream/Contents/MacOS/$executable"
     done
     test -f "$upstream/Contents/Resources/dbus-1/session.conf"

@@ -13,6 +13,8 @@ struct ActionsBar: View {
     /// The action that the label points at. It stays set after the label hides.
     @State private var labelAnchor: String?
     @State private var hideTask: Task<Void, Never>?
+    /// When the Messages pop-up last closed.
+    @State private var messagesClosedAt: ContinuousClock.Instant?
 
     /// The progress capsule has a fixed width, and the same space stays
     /// empty on the other side, so that the actions never move.
@@ -91,17 +93,48 @@ struct ActionsBar: View {
                 }
             }
             if device.has(.sms) {
-                ActionButton("Messages", symbol: "message", hovered: hover) { store.openSMSApp() }
+                ActionButton("Messages", symbol: "message", hovered: hover, action: openMessages)
+                    .popover(isPresented: messagesShown, arrowEdge: .top) {
+                        MessagesPopover(deviceId: id)
+                            .environment(store)
+                    }
             }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
     }
 
+    private var messagesShown: Binding<Bool> {
+        Binding {
+            store.messagesDeviceId == device.id
+        } set: { shown in
+            guard !shown, store.messagesDeviceId == device.id else { return }
+            store.messagesDeviceId = nil
+            messagesClosedAt = .now
+        }
+    }
+
+    private func openMessages() {
+        // A click on the button while the pop-up is open first closes the
+        // pop-up. The click must not open it again.
+        if let closed = messagesClosedAt, ContinuousClock.now - closed < .milliseconds(300) { return }
+        hover("Messages", false)
+        let id = device.id
+        Task {
+            await store.contacts(for: id).requestAccess()
+            // The user can select another device while the prompt is open.
+            // A stale ID would open the pop-up later, on a return to this one.
+            guard store.selectedDeviceId == id else { return }
+            store.messagesDeviceId = id
+        }
+    }
+
     /// Shows a label at once. Hides it a moment later, so that a move to the
     /// next action slides the label there instead of hiding and showing it.
     private func hover(_ id: String, _ inside: Bool) {
         hideTask?.cancel()
+        // The label must not show under the open pop-up's arrow.
+        if inside, id == "Messages", store.messagesDeviceId == device.id { return }
         if inside {
             if hovered == nil { labelAnchor = id }
             withAnimation(.snappy(duration: hovered == nil ? 0.16 : 0.24)) {

@@ -165,6 +165,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exit(EXIT_FAILURE)
             }
         }
+        if let index = args.firstIndex(of: "--messages-test") {
+            guard args.contains("--demo") else {
+                print("--messages-test requires --demo; no real messages are shown or sent")
+                exit(EXIT_FAILURE)
+            }
+            guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else {
+                print("--messages-test requires an output folder")
+                exit(EXIT_FAILURE)
+            }
+        }
         if args.contains("--demo") {
             func count(after flag: String) -> Int? {
                 guard let index = args.firstIndex(of: flag), index + 1 < args.count,
@@ -211,6 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let index = args.firstIndex(of: "--transfer-test"), index + 1 < args.count {
             await SidebarTest.transferTest(outputDirectory: args[index + 1])
+            return
+        }
+        if let index = args.firstIndex(of: "--messages-test"), index + 1 < args.count {
+            await SidebarTest.messagesTest(outputDirectory: args[index + 1])
             return
         }
         if args.contains("--tab-test") {
@@ -566,6 +580,121 @@ enum SidebarTest {
         try? await Task.sleep(for: .milliseconds(2600))
         shoot("transfer-gone.png")
         try? FileManager.default.removeItem(at: directory)
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --messages-test <dir>` opens the Messages pop-up,
+    /// opens a conversation, sends a message with the Return key, receives
+    /// one, and saves captures of the pop-up during each animation. Set
+    /// KDCN_APPEARANCE to light or dark to override the system appearance.
+    static func messagesTest(outputDirectory: String) async {
+        switch ProcessInfo.processInfo.environment["KDCN_APPEARANCE"] {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let store = WindowOpener.shared.store, let id = store.selectedDeviceId else {
+            NSApp.terminate(nil); return
+        }
+        let inbox = store.inbox(for: id)
+        do {
+            try FileManager.default.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("cannot create the output folder \(outputDirectory): \(error)")
+            exit(EXIT_FAILURE)
+        }
+        func popover() -> NSWindow? {
+            NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+        }
+        // A run with a failed capture must not end as a success.
+        var failures = 0
+        func shoot(_ name: String) {
+            guard let window = popover() else {
+                print("no pop-up for \(name)")
+                failures += 1
+                return
+            }
+            // screencapture exits with 0 also when it cannot write the file,
+            // so remove an old capture first and check for the new one.
+            let path = outputDirectory + "/" + name
+            if FileManager.default.fileExists(atPath: path) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    // The old file would pass as the new capture.
+                    print("cannot remove the old capture \(name): \(error)")
+                    failures += 1
+                    return
+                }
+            }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
+            do {
+                try task.run()
+            } catch {
+                print("screencapture did not start for \(name): \(error)")
+                failures += 1
+                return
+            }
+            task.waitUntilExit()
+            if task.terminationStatus != 0 || !FileManager.default.fileExists(atPath: path) {
+                print("screencapture saved no file for \(name) (status \(task.terminationStatus))")
+                failures += 1
+            }
+        }
+        func wait(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
+        store.messagesDeviceId = id
+        await wait(120); shoot("01-open-mid.png")
+        await wait(600); shoot("02-list.png")
+        // As a click does: the page slides in once the messages are loaded.
+        let conversation = Task { await inbox.show(1) }
+        await wait(20); shoot("03-load-start.png")
+        await wait(130); shoot("03-push-mid.png")
+        await wait(600); shoot("04-thread.png")
+        // The draft belongs to the conversation page, so wait until it shows.
+        await conversation.value
+        inbox.drafts[inbox.page] = "On my way!"
+        await wait(300); shoot("05-draft.png")
+        // Return in the text field sends, as a key press of the user would.
+        if let window = popover() {
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [],
+                                                timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: window.windowNumber, context: nil, characters: "\r",
+                                                charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            print("pop-up is key: \(window.isKeyWindow), first responder: \(String(describing: window.firstResponder))")
+        }
+        await wait(90); shoot("06-send-mid.png")
+        print("pending after Return: \(inbox.pending.count), draft: \(inbox.drafts[inbox.page] ?? "")")
+        await wait(400); shoot("07-sending.png")
+        await wait(900); shoot("08-sent.png")
+        print("pending after the echo: \(inbox.pending.count)")
+        inbox.addDemoMessage(threadID: 1, body: "See you there!")
+        await wait(90); shoot("09-receive-mid.png")
+        await wait(500); shoot("10-received.png")
+        inbox.page = .list
+        await wait(500)
+        let group = Task { await inbox.show(3) }
+        await wait(700); await group.value; shoot("11-group.png")
+        inbox.page = .list
+        await wait(500)
+        let attachment = Task { await inbox.show(2) }
+        await wait(700); await attachment.value; shoot("12-attachment.png")
+        inbox.page = .list
+        await wait(110); shoot("13-pop-mid.png")
+        await wait(600); shoot("14-list.png")
+        inbox.page = .newMessage
+        await wait(700); shoot("15-new-message.png")
+        if failures > 0 {
+            print("\(failures) captures failed")
+            exit(EXIT_FAILURE)
+        }
         NSApp.terminate(nil)
     }
 
