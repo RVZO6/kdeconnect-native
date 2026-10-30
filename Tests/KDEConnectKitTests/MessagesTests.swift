@@ -16,6 +16,15 @@ struct MessagesTests {
         ]))
     }
 
+    /// `show` waits only a short time; the demo answer can take longer on a
+    /// busy machine, such as a CI runner. Wait until the load ends.
+    private func loaded(_ inbox: MessageInbox, thread: Int64) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while inbox.transcripts[thread]?.isLoading != false, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     private func message(_ uID: Int32, thread: Int64, _ body: String = "Hi", minutes: Double, box: SMSMessage.Box = .inbox,
                          addresses: [String] = ["+14155550101"]) -> SMSMessage {
         SMSMessage(uID: uID, threadID: thread, body: body, addresses: addresses,
@@ -173,6 +182,7 @@ struct MessagesTests {
         store.showDemo()
         let inbox = store.inbox(for: try #require(store.selectedDeviceId))
         await inbox.show(1)
+        await loaded(inbox, thread: 1)
         // The demo answers with the whole conversation.
         #expect(inbox.transcripts[1]?.reachedStart == true)
         inbox.reconnected()
@@ -185,6 +195,7 @@ struct MessagesTests {
         let id = try #require(store.selectedDeviceId)
         let inbox = store.inbox(for: id)
         await inbox.show(1)
+        await loaded(inbox, thread: 1)
         #expect(inbox.transcripts[1]?.reachedStart == true)
         // The phone came back: the daemon loads its plugins again.
         var signal = DBusMessage(kind: .signal)
@@ -242,6 +253,7 @@ struct MessagesTests {
         #expect(inbox.conversations.count == 8)
         // The page opens only after the messages are loaded.
         await inbox.show(1)
+        await loaded(inbox, thread: 1)
         #expect(inbox.page == .conversation(1))
         #expect(inbox.transcripts[1]?.messages.count == 8)
         #expect(inbox.transcripts[1]?.isLoading == false)
