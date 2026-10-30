@@ -619,7 +619,16 @@ enum SidebarTest {
             // screencapture exits with 0 also when it cannot write the file,
             // so remove an old capture first and check for the new one.
             let path = outputDirectory + "/" + name
-            try? FileManager.default.removeItem(atPath: path)
+            if FileManager.default.fileExists(atPath: path) {
+                do {
+                    try FileManager.default.removeItem(atPath: path)
+                } catch {
+                    // The old file would pass as the new capture.
+                    print("cannot remove the old capture \(name): \(error)")
+                    failures += 1
+                    return
+                }
+            }
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
             task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
