@@ -608,20 +608,32 @@ enum SidebarTest {
         func popover() -> NSWindow? {
             NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
         }
+        // A run with a failed capture must not end as a success.
+        var failures = 0
         func shoot(_ name: String) {
-            guard let window = popover() else { print("no pop-up for \(name)"); return }
+            guard let window = popover() else {
+                print("no pop-up for \(name)")
+                failures += 1
+                return
+            }
+            // screencapture exits with 0 also when it cannot write the file,
+            // so remove an old capture first and check for the new one.
+            let path = outputDirectory + "/" + name
+            try? FileManager.default.removeItem(atPath: path)
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), path]
             do {
                 try task.run()
             } catch {
                 print("screencapture did not start for \(name): \(error)")
+                failures += 1
                 return
             }
             task.waitUntilExit()
-            if task.terminationStatus != 0 {
-                print("screencapture failed for \(name) with status \(task.terminationStatus)")
+            if task.terminationStatus != 0 || !FileManager.default.fileExists(atPath: path) {
+                print("screencapture saved no file for \(name) (status \(task.terminationStatus))")
+                failures += 1
             }
         }
         func wait(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
@@ -670,6 +682,10 @@ enum SidebarTest {
         await wait(600); shoot("14-list.png")
         inbox.page = .newMessage
         await wait(700); shoot("15-new-message.png")
+        if failures > 0 {
+            print("\(failures) captures failed")
+            exit(EXIT_FAILURE)
+        }
         NSApp.terminate(nil)
     }
 
