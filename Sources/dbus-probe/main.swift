@@ -8,7 +8,8 @@ import KDEConnectKit
 //   dbus-probe watch <seconds> <path> <interface> <member> [args...]
 // "watch" makes the call, then prints the daemon's signals for some seconds.
 // An argument is a string, or typed with a prefix: i:5, x:5, t:5, b:true,
-// and "av:" for an empty array of variants. A typed argument with a value
+// "av:" for an empty array of variants, and s:… for a string that itself
+// starts with a prefix, such as s:i:5. A typed argument with a value
 // that does not fit its type stops the tool, so that no call goes out with
 // a wrong value.
 
@@ -18,6 +19,7 @@ func argument(_ text: String) -> DBusValue {
     guard parts.count == 2 else { return .string(text) }
     let value: DBusValue?
     switch parts[0] {
+    case "s": return .string(parts[1])
     case "i": value = Int32(parts[1]).map { .int32($0) }
     case "x": value = Int64(parts[1]).map { .int64($0) }
     case "t": value = UInt64(parts[1]).map { .uint64($0) }

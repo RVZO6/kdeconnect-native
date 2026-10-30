@@ -160,7 +160,7 @@ you want an automated review.
 | `DBusKit` | Small pure-Swift D-Bus client: wire format, SASL EXTERNAL auth, method calls, signals. No libdbus. |
 | `KDEConnectKit` | Typed `kdeconnectd` API (`KDEConnectClient`), process control (`DaemonProcess`), and the observable app state with the supervisor loop (`KDEConnectStore`). |
 | `KDEConnectNative` | The SwiftUI app: main window, settings and menu bar menu. |
-| `dbus-probe` | Development tool: `dbus-probe introspect <path>`, `dbus-probe call <path> <iface> <member> [args]`, and `dbus-probe watch <seconds> …`, which makes the call and prints the signals that follow. Arguments can have a type prefix, such as `x:65` or `i:0`. |
+| `dbus-probe` | Development tool: `dbus-probe introspect <path>`, `dbus-probe call <path> <iface> <member> [args]`, and `dbus-probe watch <seconds> …`, which makes the call and prints the signals that follow. Arguments can have a type prefix, such as `x:65` or `i:0`; `s:` passes the rest as a string. |
 
 The app starts `kdeconnectd` and `dbus-daemon` with `posix_spawn` and stays
 responsible for them. macOS then applies the privacy permissions (Bluetooth,

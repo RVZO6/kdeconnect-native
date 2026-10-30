@@ -165,6 +165,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 exit(EXIT_FAILURE)
             }
         }
+        if let index = args.firstIndex(of: "--messages-test") {
+            guard args.contains("--demo") else {
+                print("--messages-test requires --demo; no real messages are shown or sent")
+                exit(EXIT_FAILURE)
+            }
+            guard index + 1 < args.count, !args[index + 1].hasPrefix("--") else {
+                print("--messages-test requires an output folder")
+                exit(EXIT_FAILURE)
+            }
+        }
         if args.contains("--demo") {
             func count(after flag: String) -> Int? {
                 guard let index = args.firstIndex(of: flag), index + 1 < args.count,
@@ -214,10 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if let index = args.firstIndex(of: "--messages-test"), index + 1 < args.count {
-            guard args.contains("--demo") else {
-                print("--messages-test requires --demo; no real messages are shown or sent")
-                exit(EXIT_FAILURE)
-            }
             await SidebarTest.messagesTest(outputDirectory: args[index + 1])
             return
         }
@@ -610,10 +616,12 @@ enum SidebarTest {
         await wait(120); shoot("01-open-mid.png")
         await wait(600); shoot("02-list.png")
         // As a click does: the page slides in once the messages are loaded.
-        Task { await inbox.show(1) }
+        let conversation = Task { await inbox.show(1) }
         await wait(20); shoot("03-load-start.png")
         await wait(130); shoot("03-push-mid.png")
         await wait(600); shoot("04-thread.png")
+        // The draft belongs to the conversation page, so wait until it shows.
+        await conversation.value
         inbox.drafts[inbox.page] = "On my way!"
         await wait(300); shoot("05-draft.png")
         // Return in the text field sends, as a key press of the user would.
@@ -638,12 +646,12 @@ enum SidebarTest {
         await wait(500); shoot("10-received.png")
         inbox.page = .list
         await wait(500)
-        Task { await inbox.show(3) }
-        await wait(700); shoot("11-group.png")
+        let group = Task { await inbox.show(3) }
+        await wait(700); await group.value; shoot("11-group.png")
         inbox.page = .list
         await wait(500)
-        Task { await inbox.show(2) }
-        await wait(700); shoot("12-attachment.png")
+        let attachment = Task { await inbox.show(2) }
+        await wait(700); await attachment.value; shoot("12-attachment.png")
         inbox.page = .list
         await wait(110); shoot("13-pop-mid.png")
         await wait(600); shoot("14-list.png")
