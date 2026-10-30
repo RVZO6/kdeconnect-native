@@ -31,11 +31,20 @@ public final class ContactBook {
     @ObservationIgnored private var index: [String: [Int]] = [:]
     @ObservationIgnored private var cache: [String: Int?] = [:]
     public let deviceId: String
+    /// Reads the contacts of a device, off the main actor.
+    private let source: @Sendable (String) -> [Contact]
     @ObservationIgnored private var isLoading = false
+    /// A load was asked for while one ran, for example after a phone sync.
+    @ObservationIgnored private var reloadRequested = false
     @ObservationIgnored private var isDemo = false
 
-    public init(deviceId: String) {
+    public convenience init(deviceId: String) {
+        self.init(deviceId: deviceId) { Self.phoneContacts(deviceId: $0) + Self.macContacts() }
+    }
+
+    init(deviceId: String, source: @escaping @Sendable (String) -> [Contact]) {
         self.deviceId = deviceId
+        self.source = source
     }
 
     /// Asks for access to Contacts if the user did not decide yet. Ask
@@ -49,13 +58,18 @@ public final class ContactBook {
     /// opens: the phone can sync more, and the user can allow access later.
     /// Views update only when something changed.
     public func load() async {
-        guard !isDemo, !isLoading else { return }
+        guard !isDemo else { return }
+        guard !isLoading else {
+            // The running load may have read the files before the change.
+            reloadRequested = true
+            return
+        }
         isLoading = true
-        let deviceId = deviceId
-        let found = await Task.detached {
-            Self.phoneContacts(deviceId: deviceId) + Self.macContacts()
-        }.value
-        set(found)
+        let deviceId = deviceId, source = source
+        repeat {
+            reloadRequested = false
+            set(await Task.detached { source(deviceId) }.value)
+        } while reloadRequested
         isLoading = false
     }
 

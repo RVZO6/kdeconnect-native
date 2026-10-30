@@ -235,6 +235,22 @@ struct MessagesTests {
         #expect(changed)
     }
 
+    @Test func aLoadAskedForDuringALoadRunsAfterIt() async {
+        let reads = Counter()
+        let book = ContactBook(deviceId: "phone") { _ in
+            let read = reads.increment()
+            Thread.sleep(forTimeInterval: 0.05)
+            return [.init(id: "alex", name: read == 1 ? "Alex" : "Alex Rivera", numbers: ["4155550101"])]
+        }
+        let first = Task { await book.load() }
+        await Task.yield()
+        // The phone synced while the first load reads the files.
+        await book.load()
+        await first.value
+        #expect(reads.value == 2)
+        #expect(book.name(for: "+14155550101") == "Alex Rivera")
+    }
+
     @Test func eachPhoneHasItsOwnContacts() {
         let store = KDEConnectStore()
         let first = store.contacts(for: "phone-a"), second = store.contacts(for: "phone-b")
@@ -258,5 +274,20 @@ struct MessagesTests {
         #expect(inbox.transcripts[1]?.messages.count == 8)
         #expect(inbox.transcripts[1]?.isLoading == false)
         #expect(store.contacts(for: device.id).name(for: "+14155550101") == "Alex Rivera")
+    }
+}
+
+/// A thread-safe count for test closures that run off the main actor.
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int { lock.withLock { count } }
+
+    func increment() -> Int {
+        lock.withLock {
+            count += 1
+            return count
+        }
     }
 }
