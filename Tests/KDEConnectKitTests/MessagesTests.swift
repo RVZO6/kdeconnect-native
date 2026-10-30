@@ -237,15 +237,22 @@ struct MessagesTests {
 
     @Test func aLoadAskedForDuringALoadRunsAfterIt() async {
         let reads = Counter()
+        let gate = Gate()
         let book = ContactBook(deviceId: "phone") { _ in
             let read = reads.increment()
-            Thread.sleep(forTimeInterval: 0.05)
+            // Hold the first read open until the test asked for a second load.
+            if read == 1 {
+                gate.started.signal()
+                gate.release.wait()
+            }
             return [.init(id: "alex", name: read == 1 ? "Alex" : "Alex Rivera", numbers: ["4155550101"])]
         }
         let first = Task { await book.load() }
-        await Task.yield()
+        await Task.detached { gate.waitUntilStarted() }.value
         // The phone synced while the first load reads the files.
         await book.load()
+        #expect(reads.value == 1)
+        gate.release.signal()
         await first.value
         #expect(reads.value == 2)
         #expect(book.name(for: "+14155550101") == "Alex Rivera")
@@ -274,6 +281,18 @@ struct MessagesTests {
         #expect(inbox.transcripts[1]?.messages.count == 8)
         #expect(inbox.transcripts[1]?.isLoading == false)
         #expect(store.contacts(for: device.id).name(for: "+14155550101") == "Alex Rivera")
+    }
+}
+
+/// Lets a test hold a read open: the reader signals `started`, then waits
+/// for `release`.
+private final class Gate: @unchecked Sendable {
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+
+    /// Blocks its thread; call it from a detached task.
+    func waitUntilStarted() {
+        started.wait()
     }
 }
 
