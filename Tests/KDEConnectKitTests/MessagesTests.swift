@@ -241,18 +241,21 @@ struct MessagesTests {
         let book = ContactBook(deviceId: "phone") { _ in
             let read = reads.increment()
             // Hold the first read open until the test asked for a second load.
-            if read == 1 {
-                gate.started.signal()
-                gate.release.wait()
-            }
+            if read == 1 { gate.startAndWait() }
             return [.init(id: "alex", name: read == 1 ? "Alex" : "Alex Rivera", numbers: ["4155550101"])]
         }
         let first = Task { await book.load() }
-        await Task.detached { gate.waitUntilStarted() }.value
+        // Wait on the main actor, without blocking a thread of the pool
+        // that runs the read.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !gate.hasStarted, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(gate.hasStarted)
         // The phone synced while the first load reads the files.
         await book.load()
         #expect(reads.value == 1)
-        gate.release.signal()
+        gate.open()
         await first.value
         #expect(reads.value == 2)
         #expect(book.name(for: "+14155550101") == "Alex Rivera")
@@ -284,15 +287,24 @@ struct MessagesTests {
     }
 }
 
-/// Lets a test hold a read open: the reader signals `started`, then waits
-/// for `release`.
+/// Lets a test hold a read open. Only the reader blocks, and the test, on
+/// the main actor, opens the gate; so the read always makes progress.
 private final class Gate: @unchecked Sendable {
-    let started = DispatchSemaphore(value: 0)
-    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var started = false
+    private let release = DispatchSemaphore(value: 0)
 
-    /// Blocks its thread; call it from a detached task.
-    func waitUntilStarted() {
-        started.wait()
+    var hasStarted: Bool { lock.withLock { started } }
+
+    /// Marks the read as started, then blocks until `open`, for at most
+    /// 5 seconds, so that a failed test cannot hang.
+    func startAndWait() {
+        lock.withLock { started = true }
+        _ = release.wait(timeout: .now() + 5)
+    }
+
+    func open() {
+        release.signal()
     }
 }
 
