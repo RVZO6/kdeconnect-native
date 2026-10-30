@@ -599,7 +599,12 @@ enum SidebarTest {
             NSApp.terminate(nil); return
         }
         let inbox = store.inbox(for: id)
-        try? FileManager.default.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(atPath: outputDirectory, withIntermediateDirectories: true)
+        } catch {
+            print("cannot create the output folder \(outputDirectory): \(error)")
+            exit(EXIT_FAILURE)
+        }
         func popover() -> NSWindow? {
             NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
         }
@@ -608,8 +613,16 @@ enum SidebarTest {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
             task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
-            try? task.run()
+            do {
+                try task.run()
+            } catch {
+                print("screencapture did not start for \(name): \(error)")
+                return
+            }
             task.waitUntilExit()
+            if task.terminationStatus != 0 {
+                print("screencapture failed for \(name) with status \(task.terminationStatus)")
+            }
         }
         func wait(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
         store.messagesDeviceId = id

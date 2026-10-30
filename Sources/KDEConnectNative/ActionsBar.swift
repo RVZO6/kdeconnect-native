@@ -122,6 +122,9 @@ struct ActionsBar: View {
         let id = device.id
         Task {
             await store.contacts(for: id).requestAccess()
+            // The user can select another device while the prompt is open.
+            // A stale ID would open the pop-up later, on a return to this one.
+            guard store.selectedDeviceId == id else { return }
             store.messagesDeviceId = id
         }
     }

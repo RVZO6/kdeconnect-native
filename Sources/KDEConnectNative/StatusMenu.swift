@@ -82,6 +82,7 @@ private struct DeviceMenu: View {
                     await store.contacts(for: id).requestAccess()
                     // The pop-up needs its button in a window on screen.
                     try? await Task.sleep(for: .milliseconds(400))
+                    guard store.selectedDeviceId == id else { return }
                     store.messagesDeviceId = id
                 }
             }
