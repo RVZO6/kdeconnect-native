@@ -45,6 +45,14 @@ and restarts the daemon when it is missing or on a dead bus.
   Plugins (switches and settings) and Details. Point at an action to see
   its name. Drop files on the window to send them: the page fades to a drop
   area, and a ring next to the actions shows the upload progress.
+- **Messages** (replaces `kdeconnect-sms`): the Messages action opens a
+  pop-up above it, in the style of Messages on iPhone. It shows the SMS
+  conversations, opens one with a slide, and sends with Return
+  (Option-Return starts a new line). The compose button starts a
+  conversation with a contact or a number. Names and photos come from the
+  contacts that the phone syncs, then from the Mac's Contacts, if you allow
+  access. A click on a picture opens it. The device submenu in the menu bar
+  also has "Messages…".
 - **Plugin settings**: the gear next to a plugin opens its settings, the
   same set as the stock app: clipboard (auto share, passwords, file size),
   share (download folder), run commands (commands that devices can run on
@@ -152,7 +160,7 @@ you want an automated review.
 | `DBusKit` | Small pure-Swift D-Bus client: wire format, SASL EXTERNAL auth, method calls, signals. No libdbus. |
 | `KDEConnectKit` | Typed `kdeconnectd` API (`KDEConnectClient`), process control (`DaemonProcess`), and the observable app state with the supervisor loop (`KDEConnectStore`). |
 | `KDEConnectNative` | The SwiftUI app: main window, settings and menu bar menu. |
-| `dbus-probe` | Development tool: `dbus-probe introspect <path>` and `dbus-probe call <path> <iface> <member> [args]`. |
+| `dbus-probe` | Development tool: `dbus-probe introspect <path>`, `dbus-probe call <path> <iface> <member> [args]`, and `dbus-probe watch <seconds> …`, which makes the call and prints the signals that follow. Arguments can have a type prefix, such as `x:65` or `i:0`. |
 
 The app starts `kdeconnectd` and `dbus-daemon` with `posix_spawn` and stays
 responsible for them. macOS then applies the privacy permissions (Bluetooth,
@@ -172,6 +180,7 @@ Bluetooth access.
 - Expand and collapse the notification stacks and save frames during the animation: `--demo --stack-test /tmp/stack`
 - Drag the sidebar edge with posted mouse events, then open Settings and print the window levels: `--demo --resize-test`
 - Switch the device tabs and print the main-thread layout and draw time of each switch: `--demo --tab-test`
+- Open the Messages pop-up, open a conversation, send and receive a message, and save captures during each animation: `--demo --messages-test /tmp/messages` (set `KDCN_APPEARANCE=light` or `dark` to override the appearance)
 - Print which view a click in the toolbar row reaches over the page centre: `--demo --hit-test`
 - Render the main window to a PNG: `"build/KDE Connect Native.app/Contents/MacOS/KDEConnectNative" --snapshot /tmp/window.png`
 - Run the scrolling workload without a daemon: add `--demo --demo-notifications 300 --demo-apps 20 --ui-benchmark /tmp/ui.json`

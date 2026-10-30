@@ -213,6 +213,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             await SidebarTest.transferTest(outputDirectory: args[index + 1])
             return
         }
+        if let index = args.firstIndex(of: "--messages-test"), index + 1 < args.count {
+            guard args.contains("--demo") else {
+                print("--messages-test requires --demo; no real messages are shown or sent")
+                exit(EXIT_FAILURE)
+            }
+            await SidebarTest.messagesTest(outputDirectory: args[index + 1])
+            return
+        }
         if args.contains("--tab-test") {
             await SidebarTest.tabTest()
             return
@@ -566,6 +574,80 @@ enum SidebarTest {
         try? await Task.sleep(for: .milliseconds(2600))
         shoot("transfer-gone.png")
         try? FileManager.default.removeItem(at: directory)
+        NSApp.terminate(nil)
+    }
+
+    /// Debug aid: `--demo --messages-test <dir>` opens the Messages pop-up,
+    /// opens a conversation, sends a message with the Return key, receives
+    /// one, and saves captures of the pop-up during each animation. Set
+    /// KDCN_APPEARANCE to light or dark to override the system appearance.
+    static func messagesTest(outputDirectory: String) async {
+        switch ProcessInfo.processInfo.environment["KDCN_APPEARANCE"] {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
+        WindowOpener.shared.showMainWindow()
+        try? await Task.sleep(for: .seconds(2.5))
+        guard let store = WindowOpener.shared.store, let id = store.selectedDeviceId else {
+            NSApp.terminate(nil); return
+        }
+        let inbox = store.inbox(for: id)
+        func popover() -> NSWindow? {
+            NSApp.windows.first { $0.isVisible && String(describing: type(of: $0)).contains("Popover") }
+        }
+        func shoot(_ name: String) {
+            guard let window = popover() else { print("no pop-up for \(name)"); return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+            task.arguments = ["-x", "-o", "-l", String(window.windowNumber), outputDirectory + "/" + name]
+            try? task.run()
+            task.waitUntilExit()
+        }
+        func wait(_ ms: Int) async { try? await Task.sleep(for: .milliseconds(ms)) }
+        store.messagesDeviceId = id
+        await wait(120); shoot("01-open-mid.png")
+        await wait(600); shoot("02-list.png")
+        // As a click does: the page slides in once the messages are loaded.
+        Task { await inbox.show(1) }
+        await wait(20); shoot("03-load-start.png")
+        await wait(130); shoot("03-push-mid.png")
+        await wait(600); shoot("04-thread.png")
+        inbox.drafts[inbox.page] = "On my way!"
+        await wait(300); shoot("05-draft.png")
+        // Return in the text field sends, as a key press of the user would.
+        if let window = popover() {
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [],
+                                                timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: window.windowNumber, context: nil, characters: "\r",
+                                                charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                    NSApp.postEvent(event, atStart: false)
+                }
+            }
+            print("pop-up is key: \(window.isKeyWindow), first responder: \(String(describing: window.firstResponder))")
+        }
+        await wait(90); shoot("06-send-mid.png")
+        print("pending after Return: \(inbox.pending.count), draft: \(inbox.drafts[inbox.page] ?? "")")
+        await wait(400); shoot("07-sending.png")
+        await wait(900); shoot("08-sent.png")
+        print("pending after the echo: \(inbox.pending.count)")
+        inbox.addDemoMessage(threadID: 1, body: "See you there!")
+        await wait(90); shoot("09-receive-mid.png")
+        await wait(500); shoot("10-received.png")
+        inbox.page = .list
+        await wait(500)
+        Task { await inbox.show(3) }
+        await wait(700); shoot("11-group.png")
+        inbox.page = .list
+        await wait(500)
+        Task { await inbox.show(2) }
+        await wait(700); shoot("12-attachment.png")
+        inbox.page = .list
+        await wait(110); shoot("13-pop-mid.png")
+        await wait(600); shoot("14-list.png")
+        inbox.page = .newMessage
+        await wait(700); shoot("15-new-message.png")
         NSApp.terminate(nil)
     }
 

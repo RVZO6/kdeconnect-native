@@ -93,7 +93,7 @@ struct DaemonLocatorTests {
         let resources = helper.appendingPathComponent("Contents/Resources/dbus-1")
         try fm.createDirectory(at: bin, withIntermediateDirectories: true)
         try fm.createDirectory(at: resources, withIntermediateDirectories: true)
-        for name in ["kdeconnectd", "dbus-daemon", "kdeconnect-sms"] {
+        for name in ["kdeconnectd", "dbus-daemon"] {
             let url = bin.appendingPathComponent(name)
             try Data("#!/bin/sh\nexit 0\n".utf8).write(to: url)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
@@ -105,7 +105,6 @@ struct DaemonLocatorTests {
         #expect(locator.bundleURL?.path == helper.path)
         #expect(locator.daemonURL == bin.appendingPathComponent("kdeconnectd"))
         #expect(locator.busURL == bin.appendingPathComponent("dbus-daemon"))
-        #expect(locator.smsAppURL == bin.appendingPathComponent("kdeconnect-sms"))
         #expect(locator.busConfigURL == resources.appendingPathComponent("session.conf"))
     }
 }
