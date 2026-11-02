@@ -49,9 +49,19 @@ if "$bundle"; then
     Scripts/prune-kdeconnect.sh "$app/Contents/Helpers/KDE Connect.app"
     cp Resources/ThirdPartyNotices.txt "$app/Contents/Resources/"
 fi
-codesign --force --sign - --timestamp=none "$app"
+# Privacy grants (TCC), such as Accessibility for the mousepad plugin, are
+# tied to the code signature. An ad-hoc signature changes with each build, so
+# macOS asks again after each rebuild. A certificate gives a stable identity.
+# Set CODESIGN_IDENTITY to choose one; "-" forces an ad-hoc signature.
+identity="${CODESIGN_IDENTITY:-}"
+if [[ -z "$identity" ]]; then
+    identity="$(security find-identity -v -p codesigning |
+        sed -nE 's/^ *[0-9]+\) ([0-9A-F]{40}) "(Apple Development|Developer ID Application):.*/\1/p' | head -n 1)"
+fi
+identity="${identity:--}"
+codesign --force --sign "$identity" --timestamp=none "$app"
 codesign --verify --deep --strict "$app"
-echo "Built $app"
+echo "Built $app (signed with ${identity})"
 
 if "$install"; then
     dest="$HOME/Applications/KDE Connect Native.app"
