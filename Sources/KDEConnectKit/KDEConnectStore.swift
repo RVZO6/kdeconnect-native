@@ -35,6 +35,10 @@ public final class KDEConnectStore {
     public var selectedDeviceId: String?
     /// True while the main window shows the pairing sheet.
     public var isPairingSheetShown = false
+    /// The device whose Messages pop-up is open.
+    public var messagesDeviceId: String?
+    @ObservationIgnored private var inboxes: [String: MessageInbox] = [:]
+    @ObservationIgnored private var contactBooks: [String: ContactBook] = [:]
 
     public var autoStartDaemon: Bool {
         didSet { UserDefaults.standard.set(autoStartDaemon, forKey: Self.autoStartKey) }
@@ -220,6 +224,7 @@ public final class KDEConnectStore {
             lastLaunch = nil
             launchBackoff = .seconds(10)
             announcedName = (try? await client.announcedName()) ?? ""
+            for (id, inbox) in inboxes { inbox.reconnected(reload: id == messagesDeviceId) }
             scheduleRefresh()
             return .connected
         } catch {
@@ -262,11 +267,28 @@ public final class KDEConnectStore {
 
     // MARK: Refresh
 
-    private func handleSignal(_ message: DBusMessage) {
+    func handleSignal(_ message: DBusMessage) {
         guard message.sender != nil else { return }
-        // The daemon emits pluginsChanged on /modules/kdeconnect/devices/<id>.
-        if message.member == "pluginsChanged", let id = message.path?.split(separator: "/").last {
-            stalePluginStates.insert(String(id))
+        // Messages change no device state; a thread request sends one
+        // signal per message.
+        if message.interface == KDEConnectClient.conversations {
+            if let id = message.path?.split(separator: "/").last { inboxes[String(id)]?.handle(message) }
+            return
+        }
+        // The phone synced its contacts, on /modules/kdeconnect/devices/<id>/contacts.
+        if message.member == "localCacheSynchronized" {
+            if let parts = message.path?.split(separator: "/"), parts.count >= 2,
+               let book = contactBooks[String(parts[parts.count - 2])] {
+                Task { await book.load() }
+            }
+            return
+        }
+        // The daemon emits these on /modules/kdeconnect/devices/<id>.
+        if message.member == "pluginsChanged" || message.member == "reachableChanged",
+           let id = message.path?.split(separator: "/").last.map(String.init) {
+            if message.member == "pluginsChanged" { stalePluginStates.insert(id) }
+            // The SMS plugin loads again, with an empty message cache.
+            inboxes[id]?.reconnected(reload: id == messagesDeviceId)
         }
         scheduleRefresh()
     }
@@ -447,7 +469,8 @@ public final class KDEConnectStore {
             "activeProviderNames": .stringArray(["LAN"]), "reachableAddresses": .stringArray(["192.168.1.20"]),
             "supportedPlugins": .stringArray([Plugin.battery.rawValue, Plugin.clipboard.rawValue,
                                               Plugin.findMyPhone.rawValue, Plugin.ping.rawValue,
-                                              Plugin.share.rawValue, Plugin.notifications.rawValue]),
+                                              Plugin.share.rawValue, Plugin.notifications.rawValue,
+                                              Plugin.sms.rawValue]),
         ])
         phone.loadedPlugins = Set(phone.supportedPlugins)
         phone.battery = .init(charge: 64, isCharging: false)
@@ -481,6 +504,8 @@ public final class KDEConnectStore {
         devices = [phone, laptop]
         pluginStates[phone.id] = Dictionary(uniqueKeysWithValues: phone.supportedPlugins.map { ($0, true) })
         selectedDeviceId = phone.id
+        contacts(for: phone.id).showDemo(DemoMessages.contacts)
+        inbox(for: phone.id).showDemo(DemoMessages.messages(now: .now))
     }
     public func reportError(_ message: String) { lastError = message }
 
@@ -558,23 +583,21 @@ public final class KDEConnectStore {
         perform("Change plugin") { try await $0.setPluginEnabled(deviceId, plugin: plugin, enabled: enabled) }
     }
 
-    public func openSMSApp() { runBundled(locator.smsAppURL, name: "KDE Connect SMS") }
+    /// The SMS conversations of a device. The inbox stays for the session,
+    /// and signals keep it current while the Messages pop-up is closed.
+    public func inbox(for deviceId: String) -> MessageInbox {
+        if let inbox = inboxes[deviceId] { return inbox }
+        let inbox = MessageInbox(deviceId: deviceId, isDemo: isDemo) { [weak self] in self?.client }
+        inboxes[deviceId] = inbox
+        return inbox
+    }
 
-    /// Runs a helper app from the KDE Connect bundle. They are plain
-    /// executables, so NSWorkspace cannot open them as apps.
-    private func runBundled(_ url: URL?, name: String) {
-        guard let url else {
-            lastError = "\(name) is not installed"
-            return
-        }
-        let process = Process()
-        process.executableURL = url
-        if let address = connectedAddress {
-            process.environment = DaemonProcess.environment(busAddress: address)
-        }
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { lastError = "Could not open \(name): \(error)" }
+    /// Names and photos for the phone numbers in a device's messages.
+    public func contacts(for deviceId: String) -> ContactBook {
+        if let book = contactBooks[deviceId] { return book }
+        let book = ContactBook(deviceId: deviceId)
+        contactBooks[deviceId] = book
+        return book
     }
 
     public var daemonLogURL: URL { DaemonProcess.logURL }

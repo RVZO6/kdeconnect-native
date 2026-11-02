@@ -35,7 +35,7 @@ public struct DaemonLocator: Sendable {
     static func embeddedBundle(in applicationBundleURL: URL) -> URL? {
         let helper = applicationBundleURL.appendingPathComponent("Contents/Helpers/KDE Connect.app")
         let fm = FileManager.default
-        guard ["kdeconnectd", "dbus-daemon", "kdeconnect-sms"].allSatisfy({
+        guard ["kdeconnectd", "dbus-daemon"].allSatisfy({
             fm.isExecutableFile(atPath: helper.appendingPathComponent("Contents/MacOS/\($0)").path)
         }), fm.fileExists(atPath: helper.appendingPathComponent("Contents/Resources/dbus-1/session.conf").path)
         else { return nil }
@@ -49,7 +49,6 @@ public struct DaemonLocator: Sendable {
               FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
     }
-    public var smsAppURL: URL? { executable("kdeconnect-sms") }
 
     private func executable(_ name: String) -> URL? {
         guard let url = bundleURL?.appendingPathComponent("Contents/MacOS/\(name)"),

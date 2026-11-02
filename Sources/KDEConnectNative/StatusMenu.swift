@@ -74,6 +74,19 @@ private struct DeviceMenu: View {
         if device.has(.share) {
             Button("Send Files…") { FileSender.choose(for: device, store: store) }
         }
+        if device.has(.sms) {
+            Button("Messages…") {
+                store.selectedDeviceId = id
+                WindowOpener.shared.showMainWindow()
+                Task {
+                    await store.contacts(for: id).requestAccess()
+                    // The pop-up needs its button in a window on screen.
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard store.selectedDeviceId == id else { return }
+                    store.messagesDeviceId = id
+                }
+            }
+        }
         Divider()
         Button("Show Details") {
             store.selectedDeviceId = id

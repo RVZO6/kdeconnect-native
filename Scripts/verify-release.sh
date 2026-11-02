@@ -14,6 +14,11 @@ test "$(lipo -archs "$app/Contents/MacOS/KDEConnectNative")" = arm64
 test -f "$app/Contents/Resources/ThirdPartyNotices.txt"
 test -d "$helper/Contents/Resources/licenses"
 test -f "$app/Contents/Resources/UpstreamLicenses/GPL-2.0-or-later.txt"
+# The Qt SMS app is pruned; the presenter pointer's QML modules stay.
+test ! -e "$helper/Contents/MacOS/kdeconnect-sms"
+for module in QML QtQml QtQuick QtQuick/Window QtQuick/Particles; do
+    test -f "$helper/Contents/Resources/qml/$module/qmldir"
+done
 QT_QPA_PLATFORM=offscreen "$helper/Contents/MacOS/kdeconnectd" --version
 # Real D-Bus startup checks relocation and the bundled config without touching
 # the user's shared address file or starting KDE Connect on their network.

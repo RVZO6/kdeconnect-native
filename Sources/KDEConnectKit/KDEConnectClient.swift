@@ -182,6 +182,49 @@ public struct KDEConnectClient: Sendable {
         _ = try await call(Self.pluginPath(deviceId, "notifications"), "org.kde.kdeconnect.device.notifications",
                            "sendReply", [.string(replyId), .string(message)])
     }
+
+    // MARK: Messages
+
+    /// The SMS plugin's interface on the device object. Its answers and
+    /// updates come as signals on the same path.
+    static let conversations = "org.kde.kdeconnect.device.conversations"
+
+    /// The newest message of each conversation that the daemon has cached.
+    public func activeConversations(_ id: String) async throws -> [SMSMessage] {
+        let reply = try await call(Self.devicePath(id), Self.conversations, "activeConversations")
+        return (reply.first?.arrayValue ?? []).compactMap(SMSMessage.init)
+    }
+
+    /// Asks the phone for the newest message of every conversation.
+    public func requestAllConversationThreads(_ id: String) async throws {
+        _ = try await call(Self.devicePath(id), Self.conversations, "requestAllConversationThreads")
+    }
+
+    /// Asks for messages of a conversation, counted from the newest one.
+    public func requestConversation(_ id: String, threadID: Int64, range: Range<Int>) async throws {
+        _ = try await call(Self.devicePath(id), Self.conversations, "requestConversation",
+                           [.int64(threadID), .int32(Int32(clamping: range.lowerBound)),
+                            .int32(Int32(clamping: range.upperBound))])
+    }
+
+    /// The daemon sends the text to the conversation's addresses, with its SIM.
+    public func replyToConversation(_ id: String, threadID: Int64, message: String) async throws {
+        _ = try await call(Self.devicePath(id), Self.conversations, "replyToConversation",
+                           [.int64(threadID), .string(message), .array(element: "v", [])])
+    }
+
+    /// Starts a conversation. Each address is a variant of `(s)`.
+    public func sendMessage(_ id: String, to addresses: [String], message: String) async throws {
+        _ = try await call(Self.devicePath(id), Self.conversations, "sendWithoutConversation",
+                           [.array(element: "v", addresses.map { .variant(.structure([.string($0)])) }),
+                            .string(message), .array(element: "v", [])])
+    }
+
+    /// The file comes later, with an attachmentReceived signal.
+    public func requestAttachment(_ id: String, partID: Int64, uniqueIdentifier: String) async throws {
+        _ = try await call(Self.devicePath(id), Self.conversations, "requestAttachmentFile",
+                           [.int64(partID), .string(uniqueIdentifier)])
+    }
 }
 
 /// Exclude non-dismissible items, such as ongoing playback controls.

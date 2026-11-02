@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Removes the parts of a copied upstream KDE Connect.app that kdeconnectd,
-# dbus-daemon and kdeconnect-sms do not use, then signs the bundle seal again.
+# Removes the parts of a copied upstream KDE Connect.app that kdeconnectd and
+# dbus-daemon do not use, then signs the bundle seal again.
 # Each remaining binary keeps its upstream signature, so library validation
 # still passes. Usage: Scripts/prune-kdeconnect.sh <path to KDE Connect.app>
 set -euo pipefail
@@ -12,7 +12,8 @@ cd "$contents"
 
 # Qt and CMake build tools, and the Qt UIs that this app replaces.
 for tool in cmake_automoc_parser moc qlalr qmlaotstats qmlcachegen qmlimportscanner \
-    qmljsrootgen qmltyperegistrar qvkgen rcc syncqt tracegen tracepointgen uic kdeconnect-app; do
+    qmljsrootgen qmltyperegistrar qvkgen rcc syncqt tracegen tracepointgen uic \
+    kdeconnect-app kdeconnect-sms; do
     rm -f "MacOS/$tool"
 done
 
@@ -21,19 +22,17 @@ find Resources/locale -mindepth 1 -maxdepth 1 ! -name en -exec rm -rf {} +
 find Resources/Translations -type f ! -name '*_en.qm' -delete
 
 # Qt plugins that nothing loads. The darwin multimedia backend stays, so the
-# ffmpeg libraries become unused.
-rm -rf PlugIns/qmlls PlugIns/generic \
+# ffmpeg libraries become unused. KPeople and Kirigami plugins were for the
+# Qt SMS app, which the native Messages pop-up replaces.
+rm -rf PlugIns/qmlls PlugIns/generic PlugIns/kpeople PlugIns/kf6/kirigami \
     PlugIns/multimedia/libffmpegmediaplugin.dylib \
     PlugIns/texttospeech/libqtexttospeech_mock.dylib
 
-# QML modules and styles that kdeconnect-sms and the presenter plugin do not
-# import. The macOS style falls back to Fusion, so Basic, Fusion and macOS
-# stay. Both presenter pointer effects import QtQuick.Particles.
-rm -rf Resources/qml/QtTest Resources/qml/QmlTime \
-    Resources/qml/QtQuick/{VectorImage,LocalStorage,tooling} \
-    Resources/qml/QtQuick/Controls/{FluentWinUI3,Imagine,Material,Universal,iOS,designer} \
-    Resources/qml/Qt/labs/{StyleKit,wavefrontmesh} \
-    Resources/qml/org/kde/kirigami/styles/Material
+# The daemon's only QML is the presenter plugin's pointer. It imports
+# QtQuick, QtQuick.Window and QtQuick.Particles; QtQuick imports QtQml, and
+# QtQml imports QML. Remove every other QML module, such as Kirigami.
+find Resources/qml -mindepth 1 -maxdepth 1 ! -name QML ! -name QtQml ! -name QtQuick -exec rm -rf {} +
+find Resources/qml/QtQuick -mindepth 1 -maxdepth 1 -type d ! -name Window ! -name Particles -exec rm -rf {} +
 
 # Remove the libraries that no remaining binary links. Removing one library
 # can make others unused, so repeat until nothing changes.

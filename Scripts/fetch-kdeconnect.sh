@@ -35,7 +35,7 @@ trap cleanup EXIT
 hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount" -quiet >&2
 ditto "$mount/KDE Connect.app" "$staging/KDE Connect.app"
 app="$staging/KDE Connect.app"
-for executable in kdeconnectd dbus-daemon kdeconnect-sms; do
+for executable in kdeconnectd dbus-daemon; do
     test -x "$app/Contents/MacOS/$executable"
 done
 test -f "$app/Contents/Resources/dbus-1/session.conf"
