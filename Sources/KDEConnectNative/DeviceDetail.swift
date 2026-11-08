@@ -57,6 +57,12 @@ struct DeviceDetail: View {
                 .formStyle(.grouped)
             }
         }
+        // The automatic (soft) edge effect needs the header's items to be
+        // registered with each page's scroll pocket. In a long-running app
+        // that registration can be lost, and then the page scrolls under
+        // the header with no effect at all. The hard style does not depend
+        // on it.
+        .scrollEdgeEffectStyle(.hard, for: .top)
         // The header and the tabs stay at the top; the page scrolls under
         // them with the system scroll edge effect.
         // The tabs float over the toolbar row, centred on this page column
@@ -109,7 +115,6 @@ struct DeviceDetail: View {
             FileSender.send(urls, to: device, store: store)
             return true
         } isTargeted: { targeted in
-            // The same fade as a tab switch.
             withAnimation(.snappy(duration: 0.22)) { drop.isTargeted = targeted && canShare }
         }
         .confirmationDialog("Unpair \(device.name)?", isPresented: $confirmUnpair) {
@@ -436,7 +441,7 @@ private struct PagePicker: View {
             ForEach(DeviceDetail.Page.allCases) { page in
                 let selected = selection.page == page
                 Button {
-                    withAnimation(.snappy(duration: 0.22)) { selection.page = page }
+                    selection.page = page
                 } label: {
                     Text(page.rawValue)
                         .font(.system(size: 13, weight: .medium))
@@ -457,6 +462,8 @@ private struct PagePicker: View {
                 .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+        // Only the highlight slides. The pages switch at once, with no fade.
+        .animation(.snappy(duration: 0.22), value: selection.page)
         .padding(.horizontal, 3)
         .glassEffect(.regular.interactive(), in: .capsule)
         .accessibilityElement(children: .contain)

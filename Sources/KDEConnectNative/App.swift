@@ -196,7 +196,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if let index = args.firstIndex(of: "--window-snapshot"), index + 1 < args.count {
-            await SidebarTest.captureWindow(to: args[index + 1])
+            let page = args.firstIndex(of: "--page").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+            await SidebarTest.captureWindow(to: args[index + 1], page: page)
             return
         }
         if let index = args.firstIndex(of: "--plugin-snapshot"), index + 2 < args.count {
@@ -792,14 +793,28 @@ enum SidebarTest {
         NSApp.terminate(nil)
     }
 
+    private static func scrollDown(in view: NSView, by distance: CGFloat) {
+        if let scroll = view as? NSScrollView {
+            let range = ScrollViewport.verticalRange(of: scroll)
+            let y = scroll.contentView.isFlipped ? range.lowerBound + distance : range.upperBound - distance
+            scroll.contentView.scroll(to: CGPoint(x: scroll.contentView.bounds.minX, y: y))
+            scroll.reflectScrolledClipView(scroll.contentView)
+        }
+        for sub in view.subviews { scrollDown(in: sub, by: distance) }
+    }
+
     /// Opens the main window and saves an image of it, title bar included.
-    static func captureWindow(to path: String) async {
+    static func captureWindow(to path: String, page: String? = nil) async {
         WindowOpener.shared.showMainWindow()
         try? await Task.sleep(for: .seconds(2))
         if let store = WindowOpener.shared.store, store.selectedDeviceId == nil {
             store.selectedDeviceId = store.primaryDevice?.id ?? store.pairedDevices.first?.id
         }
         try? await Task.sleep(for: .seconds(1.5))
+        if let page {
+            NotificationCenter.default.post(name: .debugSelectPage, object: page)
+            try? await Task.sleep(for: .milliseconds(600))
+        }
         if let window = NSApp.windows.first(where: { WindowOpener.isMainWindow($0) && $0.isVisible }) {
             print("window level \(window.level.rawValue) (floating is \(NSWindow.Level.floating.rawValue)),",
                   "content min \(window.contentMinSize), max \(window.contentMaxSize), frame \(window.frame.size)")
@@ -811,6 +826,9 @@ enum SidebarTest {
             task.waitUntilExit()
             // Then scroll the page, so that content is under the header bar.
             NotificationCenter.default.post(name: .debugScrollPage, object: nil)
+            // The form pages have no scroll position binding; scroll their
+            // AppKit scroll views directly.
+            if page != nil, let content = window.contentView { scrollDown(in: content, by: 160) }
             try? await Task.sleep(for: .milliseconds(600))
             let again = Process()
             again.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
